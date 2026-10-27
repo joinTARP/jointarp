@@ -17,7 +17,7 @@ export default {
     bun: {
       entrypoint: "src/main/index.ts",
       alias: { "@shared": "./src/shared" },
-      external: ["quickjs-emscripten"],
+      external: ["quickjs-emscripten", "node-datachannel"],
     },
     buildFolder: "out/desktop",
     artifactFolder: "release",

@@ -25,7 +25,8 @@ export function useSpeechSnapshot() {
 }
 export function useSpeech(owner: string) {
   const roomOptions = desktopOrpc.tts.roomSettings.queryOptions({ input: { roomId: owner } });
-  const room = useQuery(roomOptions);
+  const lan = useQuery(desktopOrpc.lan.status.queryOptions({ input: { roomId: owner } }));
+  const room = useQuery({ ...roomOptions, enabled: lan.data?.remote === false });
   const client = useQueryClient();
   const automatic = useMutation({
     ...desktopOrpc.tts.automatic.mutationOptions(),

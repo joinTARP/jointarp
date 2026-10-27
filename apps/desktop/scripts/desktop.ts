@@ -46,17 +46,32 @@ async function copyDependency(name: string, from: string) {
       return !/^(src|deps|test|tests|benchmark)(\/|$)/u.test(relative);
     },
   });
+  if (name === "node-datachannel") {
+    const nativeRequire = createRequire(join(directory, "package.json"));
+    const candidates = Object.keys(manifest.optionalDependencies ?? {}).filter((dependency) => {
+      try {
+        nativeRequire.resolve(dependency);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (candidates.length !== 1)
+      throw new Error("需要且只能安装当前平台的 node-datachannel 原生包");
+    await copyDependency(candidates[0]!, directory);
+  }
   for (const dependency of Object.keys(manifest.dependencies ?? {})) {
     await copyDependency(dependency, directory);
   }
 }
 await copyDependency("quickjs-emscripten", root);
+await copyDependency("node-datachannel", root);
 const smoke = await Bun.build({
   entrypoints: [join(root, "scripts/runtime-smoke.ts")],
   outdir: join(root, "out/runtime"),
   naming: "smoke.js",
   target: "bun",
-  external: ["quickjs-emscripten"],
+  external: ["quickjs-emscripten", "node-datachannel"],
 });
 if (!smoke.success) throw new AggregateError(smoke.logs, "分发运行时验收程序构建失败");
 

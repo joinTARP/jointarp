@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Activity as ActivityIcon,
@@ -14,6 +15,7 @@ import { NavigationHighlight, NavigationMotion } from "../../components/Navigati
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog";
 import { ScrollAreaPane } from "../../components/ui/scroll-area";
+import { desktopOrpc } from "../../desktop-rpc";
 import { AutosaveScope, useFlushSettings } from "../settings/AutosaveScope";
 import { SettingsCardLayout, SettingsSection } from "../settings/SettingsSection";
 import { speechPlayer } from "../tts/use-speech";
@@ -90,6 +92,7 @@ type SettingsSectionId = (typeof settingsSections)[number]["id"];
 export function RoomSettingsPage() {
   const { roomId } = useParams({ from: "/game/$roomId/settings" });
   const navigate = useNavigate();
+  const lan = useQuery(desktopOrpc.lan.status.queryOptions({ input: { roomId } }));
   return (
     <AutosaveScope>
       <Dialog
@@ -104,7 +107,11 @@ export function RoomSettingsPage() {
           <DialogDescription className="sr-only">
             按分类管理当前冒险的主持、小队、语音、状态和存档。
           </DialogDescription>
-          <RoomSettingsContent key={roomId} roomId={roomId} />
+          {lan.data?.remote === false ? (
+            <RoomSettingsContent key={roomId} roomId={roomId} />
+          ) : (
+            <p className="p-6">{lan.data?.remote ? "冒险设置由房主管理。" : "正在读取房间…"}</p>
+          )}
         </DialogContent>
       </Dialog>
     </AutosaveScope>
