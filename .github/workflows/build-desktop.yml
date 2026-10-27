@@ -1,6 +1,13 @@
 name: 桌面安装包构建与验收
 
 on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 构建平台
+        type: choice
+        default: win
+        options: [win, linux, mac, all]
   workflow_call:
     inputs:
       sign:
@@ -32,16 +39,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2022
-            platform: win
-            arch: x64
-          - os: ubuntu-24.04
-            platform: linux
-            arch: x64
-          - os: macos-15
-            platform: mac
-            arch: arm64
+        include: >-
+          ${{ fromJSON(
+            inputs.platform == 'win' && '[{"os":"windows-2022","platform":"win","arch":"x64"}]' ||
+            inputs.platform == 'linux' && '[{"os":"ubuntu-24.04","platform":"linux","arch":"x64"}]' ||
+            inputs.platform == 'mac' && '[{"os":"macos-15","platform":"mac","arch":"arm64"}]' ||
+            '[{"os":"windows-2022","platform":"win","arch":"x64"},{"os":"ubuntu-24.04","platform":"linux","arch":"x64"},{"os":"macos-15","platform":"mac","arch":"arm64"}]'
+          ) }}
     defaults:
       run:
         shell: bash
