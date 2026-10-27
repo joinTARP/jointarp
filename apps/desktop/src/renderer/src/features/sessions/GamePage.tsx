@@ -30,6 +30,7 @@ import { CharacterSummary } from "./CharacterSummary";
 import { ChatPanel, type ChatPanelHandle } from "./ChatPanel";
 import { GameParty } from "./GameParty";
 import { GameToolDialog } from "./GameToolDialog";
+import { LanRoom } from "./LanRoom";
 import { RoomDocumentScope } from "./room-document";
 import { RoomNotes } from "./RoomNotes";
 import { useRoomLaunch, useRoomSession } from "./use-room-state";
@@ -77,6 +78,7 @@ export function GamePage() {
   const settingsPage = Boolean(useMatch({ from: "/game/$roomId/settings", shouldThrow: false }));
   const { roomId } = useParams({ from: "/game/$roomId" });
   const navigate = useNavigate();
+  const lan = useQuery(desktopOrpc.lan.status.queryOptions({ input: { roomId } }));
   const openRoomSettings = () =>
     void navigate({ to: "/game/$roomId/settings", params: { roomId } });
   const display = useQuery(desktopOrpc.sessions.display.get.queryOptions({ input: { roomId } }));
@@ -213,6 +215,7 @@ export function GamePage() {
                   </>
                 ) : null}
               </ScrollAreaPane>
+              <LanRoom roomId={roomId} />
               <nav
                 aria-label="冒险导航"
                 className="border-border/40 mt-auto grid shrink-0 grid-cols-3 items-center gap-1 border-t pt-3"
@@ -250,7 +253,7 @@ export function GamePage() {
                   aria-haspopup="dialog"
                   aria-expanded={settingsPage}
                   onClick={openRoomSettings}
-                  disabled={!session.data}
+                  disabled={!session.data || lan.data?.remote !== false}
                 >
                   <Settings className="size-5" />
                 </Button>
@@ -260,13 +263,16 @@ export function GamePage() {
                   <DialogHeader>
                     <DialogTitle>退出游戏？</DialogTitle>
                     <DialogDescription>
-                      这段冒险会保持进行中。退出后回到首页，可以再进来，也可以切换到别的冒险。
+                      {lan.data?.remote
+                        ? "退出后断开内网连接，再次加入需要房主同意。存档保存在房主电脑。"
+                        : "这段冒险会保持进行中。退出会停止联机，其他玩家将断开连接。"}
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
                     <DialogClose render={<Button variant="outline" />}>取消</DialogClose>
                     <Button
-                      onClick={() => {
+                      onClick={async () => {
+                        await desktopRpc.lan.stop({ roomId });
                         setConfirmLeave(false);
                         void navigate({ to: "/" });
                       }}

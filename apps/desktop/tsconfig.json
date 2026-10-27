@@ -35,6 +35,9 @@
     "scripts/runtime-smoke.ts",
     "../../scripts/test.ts",
     "../../scripts/test-preload.ts",
-    "../../scripts/release/smoke.ts"
+    "../../scripts/release/smoke.ts",
+    "scripts/webrtc-probe/*.ts",
+    "scripts/p2p-probe/*.ts",
+    "scripts/bun-webrtc-probe/*.ts"
   ]
 }

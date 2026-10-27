@@ -12,11 +12,12 @@ import { AppUpdateService, createAcceleratedUpdater } from "./app-update";
 import { readAppConfig, resolveAppConfigLocation } from "./config/app-config";
 import { acquireDesktopInstance } from "./desktop-instance";
 import { configureApplicationMenu } from "./desktop-menu";
-import { createDesktopRpcHandler } from "./desktop-rpc";
+import { desktopRouter, createDesktopRpcHandler, type DesktopRpcContext } from "./desktop-rpc";
 import { LocalGameSettings } from "./game/local-settings";
 import { RoomAiSettingsStore } from "./game/room-ai-settings";
 import { SubscriptionAuth } from "./game/subscription-auth";
 import { registerImportProtocol } from "./import-protocol";
+import { LanService } from "./lan/service";
 import { PlaytestService } from "./mcp/playtest";
 import { McpService } from "./mcp/service";
 import { createMediaServer } from "./media-protocol";
@@ -113,7 +114,8 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
   importLinkHandler = receiveImport;
   // 实例锁初始化时到达的原生事件也必须交给当前任务服务。
   pendingImports.push(...earlyImportLinks.splice(0));
-  const media = createMediaServer();
+  let lan: LanService;
+  const media = createMediaServer((source, method) => lan.media(source, method));
   const gameSettings = new LocalGameSettings(configLocation.directory);
   const subscriptionAuth = new SubscriptionAuth(
     () => gameSettings.modelRuntime(),
@@ -130,7 +132,10 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
     (roomId, selection) => roomAi.credentials(roomId, selection),
     { narrationGap: narrationGapMs },
   );
-  const sessionLifecycle = new LocalSessionLifecycle(sessionsRoot, chat, closeModuleReference);
+  const sessionLifecycle = new LocalSessionLifecycle(sessionsRoot, chat, (roomId) => {
+    lan.stop(roomId);
+    closeModuleReference(roomId);
+  });
   function showRoom(roomId?: string | null) {
     if (shuttingDown) return;
     const hash = roomId ? `/game/${roomId}` : "/";
@@ -190,6 +195,25 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
       return response === 1;
     },
   );
+  async function createContext(): Promise<DesktopRpcContext> {
+    return {
+      configFilePath: configLocation.filePath,
+      sessionsRoot,
+      sessionLifecycle,
+      gameSettings,
+      tts,
+      roomAi,
+      subscriptionAuth,
+      chat,
+      mcp,
+      updates,
+      moduleImports,
+      lan,
+      isHost: true,
+      player: await gameSettings.player(),
+    };
+  }
+  lan = new LanService(configLocation.directory, createContext, desktopRouter);
   configureDesktopWindows((window) => {
     let port: NativeMessagePort | undefined;
     const rpc = BrowserView.defineRPC<NativeBridge>({
@@ -200,21 +224,7 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
             port?.close();
             port = new NativeMessagePort((packet) => rpc.send.orpc(packet));
             handler.upgrade(port, {
-              context: async () => ({
-                configFilePath: configLocation.filePath,
-                sessionsRoot,
-                sessionLifecycle,
-                gameSettings,
-                tts,
-                roomAi,
-                subscriptionAuth,
-                chat,
-                mcp,
-                updates,
-                moduleImports,
-                isHost: true,
-                player: await gameSettings.player(),
-              }),
+              context: createContext,
             });
             return { mediaBase: media.base };
           },
@@ -246,7 +256,10 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
       }
     });
     window.on("close", () => {
-      if (mainWindow === window) mainWindow = null;
+      if (mainWindow === window) {
+        mainWindow = null;
+        lan.close();
+      }
       closeAllModuleReferences();
       if (process.platform !== "darwin" && !shuttingDown) Utils.quit();
     });
@@ -255,6 +268,7 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
   function shutdown(): Promise<void> {
     if (shutdownPromise) return shutdownPromise;
     shuttingDown = true;
+    lan.close();
     tts.close();
     closeAllModuleReferences();
     shutdownPromise = Promise.allSettled([

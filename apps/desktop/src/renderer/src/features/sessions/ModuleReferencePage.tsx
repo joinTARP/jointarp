@@ -14,7 +14,8 @@ import { useRoomSession } from "./use-room-state";
 export function ModuleReferencePage() {
   const { roomId } = useParams({ from: "/reference/$roomId" });
   const display = useQuery(desktopOrpc.sessions.display.get.queryOptions({ input: { roomId } }));
-  const debug = display.data?.showAllDocuments === true;
+  const lan = useQuery(desktopOrpc.lan.status.queryOptions({ input: { roomId } }));
+  const debug = lan.data?.remote === false && display.data?.showAllDocuments === true;
   const session = useRoomSession(roomId, debug);
   const title = session.data ? `模组设定 · ${session.data.room.moduleName}` : "模组设定";
   useEffect(() => {
