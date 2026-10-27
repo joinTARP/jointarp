@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import { resolveMediaRequestFile } from "./media-path";
 
 /** 仅监听本机；令牌只通过受限原生桥交给应用页面，不写入日志或存档。 */
-export function createMediaServer() {
+export function createMediaServer(
+  remote?: (source: string, method: string) => Promise<Response | undefined>,
+) {
   const token = randomBytes(32).toString("hex");
   const prefix = `/${token}/document/`;
   const server = Bun.serve({
@@ -18,6 +20,8 @@ export function createMediaServer() {
       )
         return new Response(null, { status: 404 });
       const source = `tarp://document/${url.pathname.slice(prefix.length)}${url.search}`;
+      const response = await remote?.(source, request.method);
+      if (response) return response;
       const file = await resolveMediaRequestFile(source);
       if (!file) return new Response(null, { status: 404 });
       return new Response(request.method === "HEAD" ? null : Bun.file(file), {

@@ -8,6 +8,8 @@ import { z } from "zod";
 import { readAppConfig, updateAppConfig } from "./config/app-config";
 import { desktopProcedure as procedure } from "./desktop-rpc-context";
 import { connectProviderSchema } from "./game/local-settings";
+import { lanForwarder } from "./lan/forwarder";
+import { lanRouter } from "./lan/router";
 import { moduleRouter } from "./modules/module-router";
 import { closeModuleReference, openModuleReference } from "./reference-window";
 import { sessionRouter } from "./sessions/session-router";
@@ -15,6 +17,7 @@ import { ttsRouter } from "./tts/router";
 export type { DesktopRpcContext } from "./desktop-rpc-context";
 
 export const desktopRouter = {
+  lan: lanRouter,
   updates: {
     get: procedure.handler(({ context }) => context.updates.get()),
     check: procedure.handler(({ context }) => context.updates.check()),
@@ -89,6 +92,7 @@ export type DesktopRouter = typeof desktopRouter;
 
 export function createDesktopRpcHandler() {
   return new RPCHandler(desktopRouter, {
+    clientInterceptors: [lanForwarder],
     interceptors: [
       onError((error) => {
         console.error("桌面 RPC 失败", error);

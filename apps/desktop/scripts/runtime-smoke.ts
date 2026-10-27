@@ -2,7 +2,10 @@ import { strict as assert } from "node:assert";
 
 import { SqliteDatabase } from "@jointarp/core/node/storage/sqlite";
 import { Kysely, SqliteDialect } from "kysely";
+import rtc from "node-datachannel";
 import { getQuickJS } from "quickjs-emscripten";
+
+import { NativePeer, type PeerSignal } from "../src/main/online/native-peer";
 
 const path = process.argv[2];
 assert.ok(path, "需要独立测试数据库路径");
@@ -44,4 +47,42 @@ try {
 } finally {
   context.dispose();
 }
-console.log(`打包运行时验收通过：Bun ${Bun.version}、SQLite 写入与回滚、重开恢复、QuickJS Wasm。`);
+const signals: PeerSignal[] = [];
+let host: NativePeer | undefined;
+const player = new NativePeer({
+  initiator: true,
+  iceServers: [],
+  onSignal: (signal) => {
+    if (host) host.receiveSignal(signal);
+    else signals.push(signal);
+  },
+});
+host = new NativePeer({
+  initiator: false,
+  iceServers: [],
+  onSignal: (signal) => player.receiveSignal(signal),
+});
+try {
+  for (const signal of signals) host.receiveSignal(signal);
+  const [a, b] = await Promise.all([host.ready, player.ready]);
+  const received = new Promise<unknown>((resolve) =>
+    b.addEventListener("message", (event) => resolve((event as MessageEvent).data), { once: true }),
+  );
+  a.postMessage("原生联机分发验收");
+  assert.equal(
+    await Promise.race([
+      received,
+      Bun.sleep(5000).then(() => {
+        throw Error("原生传输超时");
+      }),
+    ]),
+    "原生联机分发验收",
+  );
+} finally {
+  player.close();
+  host.close();
+  rtc.cleanup();
+}
+console.log(
+  `打包运行时验收通过：Bun ${Bun.version}、SQLite 写入与回滚、重开恢复、QuickJS Wasm、原生 WebRTC 传输。`,
+);
