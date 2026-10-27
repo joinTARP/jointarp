@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client";
 import { SplashScreen } from "./components/SplashScreen";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { WindowsTitleBar } from "./components/WindowsTitleBar";
 import { desktopRpc, queryClient } from "./desktop-rpc";
 import { listenForModuleSync } from "./features/sessions/room-module-sync";
 import { desktopReady } from "./native-bridge";
@@ -70,7 +71,9 @@ void Promise.all([
   ReactDOM.createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider initialTheme={initialTheme}>
-        <TooltipProvider>{content}</TooltipProvider>
+        <TooltipProvider>
+          <WindowsTitleBar>{content}</WindowsTitleBar>
+        </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>,
   );
