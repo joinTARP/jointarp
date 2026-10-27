@@ -1,3 +1,5 @@
+import type { DesktopAction } from "./desktop-events";
+
 export interface BridgePacket {
   binary: boolean;
   data: string;
@@ -10,6 +12,7 @@ export type NativeBridge = {
       claimStartupAnimation: { params: undefined; response: boolean };
       openExternal: { params: { url: string }; response: boolean };
       setGamePage: { params: { active: boolean }; response: void };
+      windowAction: { params: { action: DesktopAction }; response: boolean };
     };
     messages: { orpc: BridgePacket };
   };

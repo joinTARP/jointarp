@@ -1,3 +1,4 @@
+import { desktopShortcut } from "@shared/desktop-shortcuts";
 import { setDocumentMediaBase } from "@shared/document-media";
 import { NativeMessagePort, type NativeBridge } from "@shared/native-bridge";
 import { Electroview } from "electrobun/view";
@@ -24,6 +25,7 @@ export const desktopReady = rpc.request.bootstrap().then(({ mediaBase }) => {
   setDocumentMediaBase(mediaBase);
 });
 window.desktopEvents = {
+  windowAction: (action) => rpc.request.windowAction({ action }),
   claimStartupAnimation: () => rpc.request.claimStartupAnimation(),
   setGamePage: (active) => {
     void rpc.request.setGamePage({ active });
@@ -31,6 +33,16 @@ window.desktopEvents = {
   onOpenSettings: (listener) => listen("open-settings", listener),
   onRequestLeaveRoom: (listener) => listen("request-leave-room", listener),
 };
+
+if (navigator.userAgent.includes("Windows")) {
+  document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.isComposing) return;
+    const action = desktopShortcut(event);
+    if (!action) return;
+    event.preventDefault();
+    void rpc.request.windowAction({ action });
+  });
+}
 
 window.addEventListener("pagehide", () => nativePort.close(), { once: true });
 document.addEventListener(

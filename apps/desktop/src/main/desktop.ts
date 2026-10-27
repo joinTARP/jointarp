@@ -11,7 +11,7 @@ import manifest from "../../package.json";
 import { AppUpdateService, createAcceleratedUpdater } from "./app-update";
 import { readAppConfig, resolveAppConfigLocation } from "./config/app-config";
 import { acquireDesktopInstance } from "./desktop-instance";
-import { configureApplicationMenu } from "./desktop-menu";
+import { configureApplicationMenu, performDesktopAction } from "./desktop-menu";
 import { createDesktopRpcHandler } from "./desktop-rpc";
 import { LocalGameSettings } from "./game/local-settings";
 import { RoomAiSettingsStore } from "./game/room-ai-settings";
@@ -228,6 +228,7 @@ export async function startDesktop(modulePath?: string, importUrl?: string): Pro
             const state = windowStates.get(window.id);
             if (state) state.gamePage = active;
           },
+          windowAction: ({ action }) => performDesktopAction(window, action),
         },
         messages: { orpc: (packet) => port?.receive(packet) },
       },

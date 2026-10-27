@@ -30,7 +30,7 @@ export function createDesktopWindow(
   const window = new BrowserWindow({
     title: "TARP",
     frame: { width: 1280, height: 800 },
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: process.platform === "linux" ? "default" : "hiddenInset",
     trafficLightOffset: { x: 16, y: 16 },
     renderer: "native",
     ...options,
