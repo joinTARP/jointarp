@@ -6,12 +6,14 @@ import { AppConfigError } from "./config/app-config";
 import type { LocalGameSettings } from "./game/local-settings";
 import type { RoomAiSettingsStore } from "./game/room-ai-settings";
 import type { SubscriptionAuth } from "./game/subscription-auth";
+import type { LanService } from "./lan/service";
 import type { McpService } from "./mcp/service";
 import type { ModuleImportService } from "./modules/import-service";
 import type { LocalSessionLifecycle } from "./sessions/local-session-lifecycle";
 import type { TtsService } from "./tts/service";
 
 export interface DesktopRpcContext extends GameContext {
+  readonly lan?: LanService;
   readonly updates: AppUpdateService;
   readonly moduleImports: ModuleImportService;
   readonly mcp: McpService;

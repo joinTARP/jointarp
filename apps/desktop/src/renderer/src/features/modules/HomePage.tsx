@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { desktopOrpc } from "../../desktop-rpc";
+import { LanJoin } from "../sessions/LanRoom";
 import { RoomList } from "../sessions/RoomList";
 import { ModuleCardList } from "./ModuleCardList";
 
@@ -13,7 +14,12 @@ export function HomePage({ section = "home" }: { section?: "home" | "modules" })
   const catalog = useQuery(desktopOrpc.modules.list.queryOptions());
   return (
     <>
-      {!isLibrary ? <RoomList /> : null}
+      {!isLibrary ? (
+        <>
+          <LanJoin />
+          <RoomList />
+        </>
+      ) : null}
       <ModuleCardList
         title={isLibrary ? undefined : "模组"}
         catalog={
