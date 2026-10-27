@@ -291,7 +291,7 @@ test("三种格式的文档公式覆盖控制元数据显隐，原始加载保�
     }
     const preview = await loadModuleDocuments(root, [type], { view: "public" });
     for (const document of preview) {
-      assert.equal(document.valid, true, document.error);
+      assert.equal(document.valid, true, document.error ?? "");
       assert.equal(document.title, "未知线索");
       assert.equal(document.description, undefined);
       assert.equal(document.body, undefined);
@@ -309,7 +309,7 @@ test("三种格式的文档公式覆盖控制元数据显隐，原始加载保�
       await writeFile(join(root, path), stringifyDocumentContent({ ...source, found: true }, path));
     }
     for (const document of await loadModuleDocuments(root, [type], { view: "public" })) {
-      assert.equal(document.valid, true, document.error);
+      assert.equal(document.valid, true, document.error ?? "");
       assert.equal(document.title, "真实名称");
       assert.equal(document.description, "已发现的线索");
       assert.equal(document.body, "完整正文");

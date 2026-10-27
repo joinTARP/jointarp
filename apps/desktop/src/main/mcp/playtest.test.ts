@@ -179,7 +179,7 @@ test("并发启动被拒绝；暂停取消生成并等待收尾，清理不遗�
   assert.equal(attempts.filter((item) => item.status === "fulfilled").length, 1);
   await waitFor(async () => {
     const result = await f.service.inspect(roomId);
-    assert.notEqual(result.status, "failed", result.error);
+    assert.notEqual(result.status, "failed", result.error ?? "");
     assert.ok(result.activity.running);
   });
   await started;
