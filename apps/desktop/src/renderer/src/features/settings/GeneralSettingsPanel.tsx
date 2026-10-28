@@ -1,3 +1,4 @@
+import { privacyPolicyUrl } from "@shared/brand";
 import { FolderOpen } from "lucide-react";
 
 import { PageToolbarHeader } from "../../components/StickyPageToolbar";
@@ -68,6 +69,17 @@ export function GeneralSettingsPanel({
           ) : null}
         </section>
         <AppUpdateSettings />
+        <section className="mt-12 mb-8" aria-labelledby="privacy-heading">
+          <h2 id="privacy-heading" className="text-base font-semibold">
+            隐私
+          </h2>
+          <p className="text-muted-foreground mt-2 text-sm">
+            了解本机数据、联机和第三方服务如何处理你的信息。
+            <a href={privacyPolicyUrl} className="text-foreground underline underline-offset-4">
+              阅读隐私政策
+            </a>
+          </p>
+        </section>
       </div>
     </>
   );
