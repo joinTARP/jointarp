@@ -65,7 +65,7 @@ export interface ModuleImportResult {
 
 export interface ModuleImportState {
   readonly id: number;
-  readonly status: "idle" | "running" | "confirm" | "success" | "error";
+  readonly status: "idle" | "selecting" | "running" | "confirm" | "success" | "error";
   readonly source?: string;
   readonly existingPath?: string;
   readonly result?: ModuleImportResult;

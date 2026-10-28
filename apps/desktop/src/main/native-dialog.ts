@@ -8,7 +8,7 @@ export interface PathPickerOptions {
 }
 export async function showPathPicker(options: PathPickerOptions) {
   const filePaths = await Utils.openFileDialog({
-    startingFolder: options.defaultPath,
+    startingFolder: options.defaultPath ?? "~/",
     canChooseFiles: options.properties.includes("openFile"),
     canChooseDirectory: options.properties.includes("openDirectory"),
     allowsMultipleSelection: false,

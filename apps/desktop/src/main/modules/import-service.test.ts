@@ -12,6 +12,50 @@ import { windowsProtocolCommand } from "../import-protocol";
 import { ExistingGitModuleError } from "./import-git-module";
 import { ModuleImportService } from "./import-service";
 
+test("本地来源选择期间不开始导入，取消后可重选，选定后才进入导入状态", async () => {
+  let directoryReads = 0;
+  const service = new ModuleImportService(async () => {
+    directoryReads++;
+    return "/library";
+  });
+  let select!: (path: string | null) => void;
+  let finish!: () => void;
+  let imports = 0;
+  const run = async (directory: string, path: string) => {
+    imports++;
+    assert.equal(directory, "/library");
+    assert.equal(path, "/tmp/module.zip");
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    return { path: "/library/module", name: "测试模组" };
+  };
+  const choose = () => new Promise<string | null>((resolve) => (select = resolve));
+  const canceled = service.local("ZIP 文件", choose, run);
+  assert.equal(service.get().status, "selecting");
+  assert.equal(directoryReads, 0);
+  assert.equal(imports, 0);
+  assert.throws(() => service.start({ url: "https://github.com/a/b.git" }), /稍后重试/);
+  await assert.rejects(service.local("文件夹", choose, run), /稍后重试/);
+  service.dismiss(service.get().id);
+  service.report(new Error("不能打断选择"));
+  assert.equal(service.get().status, "selecting");
+  select(null);
+  assert.equal(await canceled, null);
+  assert.equal(service.get().status, "idle");
+  assert.equal(directoryReads, 0);
+  assert.equal(imports, 0);
+
+  const importing = service.local("ZIP 文件", choose, run);
+  select("/tmp/module.zip");
+  await waitFor(() => assert.equal(imports, 1));
+  assert.equal(service.get().status, "running");
+  assert.equal(directoryReads, 1);
+  finish();
+  assert.deepEqual(await importing, { path: "/library/module", name: "测试模组" });
+  assert.equal(service.get().status, "success");
+});
+
 test("官网链接仅接受 GitHub 仓库与提醒版本，不能注入路径、分支或命令", () => {
   const revision = "a".repeat(40);
   assert.deepEqual(
@@ -84,7 +128,11 @@ test("导入互斥、替换确认取消、失败重试与官网版本提醒", as
   assert.throws(() => service.start(request), /稍后重试/);
   assert.equal(service.get().busyNotice, 1);
   await assert.rejects(
-    service.local("ZIP", async () => assert.fail("忙碌时不能打开选择器")),
+    service.local(
+      "ZIP",
+      async () => assert.fail("忙碌时不能打开选择器"),
+      async () => assert.fail("忙碌时不能导入"),
+    ),
     /稍后重试/,
   );
   complete();
