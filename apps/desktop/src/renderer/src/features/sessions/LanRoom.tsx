@@ -1,3 +1,4 @@
+import { privacyPolicyUrl } from "@shared/brand";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Check, Copy, Globe, LoaderCircle, Network } from "lucide-react";
@@ -15,6 +16,19 @@ import { Input } from "../../components/ui/input";
 import { desktopOrpc, desktopRpc } from "../../desktop-rpc";
 import { ConnectionError } from "./ConnectionError";
 import { OnlineConnectionProgress } from "./OnlineConnectionProgress";
+
+function OnlinePrivacyNotice() {
+  return (
+    <p className="text-muted-foreground text-xs leading-relaxed">
+      互联网联机会连接协调服务及第三方网络连接服务，并与其他玩家交换网络地址。
+      游戏数据会传给房主和获准加入的玩家。详情见
+      <a href={privacyPolicyUrl} className="underline underline-offset-4">
+        《隐私政策》
+      </a>
+      。
+    </p>
+  );
+}
 
 export function LanJoin() {
   const [open, setOpen] = useState(false);
@@ -114,6 +128,7 @@ function JoinForm() {
           房主拒绝了本次申请。
         </p>
       ) : null}
+      {/^\d{6}$/.test(address.trim()) && !waiting ? <OnlinePrivacyNotice /> : null}
       <div className="flex gap-2">
         <Button type="submit" disabled={!address.trim() || waiting}>
           申请加入
@@ -344,6 +359,7 @@ export function LanRoom({ roomId }: { roomId: string }) {
                     </p>
                   </div>
                 </div>
+                <OnlinePrivacyNotice />
                 <Button
                   className="w-full"
                   disabled={action.isPending || status.isPending || status.isError}
