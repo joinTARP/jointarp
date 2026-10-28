@@ -13,6 +13,8 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { desktopOrpc, desktopRpc } from "../../desktop-rpc";
+import { ConnectionError } from "./ConnectionError";
+import { OnlineConnectionProgress } from "./OnlineConnectionProgress";
 
 export function LanJoin() {
   const [open, setOpen] = useState(false);
@@ -97,15 +99,15 @@ function JoinForm() {
           required
         />
       </label>
-      {waiting ? (
+      {waiting && /^\d{6}$/.test(submitted) ? (
+        <OnlineConnectionProgress target={submitted} />
+      ) : waiting ? (
         <p role="status" className="text-muted-foreground text-sm">
           {join.data?.status === "pending" ? "等待房主同意…申请两分钟内有效。" : "正在连接…"}
         </p>
       ) : null}
       {join.error ? (
-        <p role="alert" className="text-destructive text-sm">
-          {join.error.message}。请检查房间码或地址、网络和防火墙后重试。
-        </p>
+        <ConnectionError key={join.error.message} message={join.error.message} />
       ) : null}
       {join.data?.status === "rejected" ? (
         <p role="alert" className="text-destructive text-sm">
@@ -227,6 +229,9 @@ export function LanRoom({ roomId }: { roomId: string }) {
                 : "你来保存冒险和主持游戏，朋友无需提前导入模组。"}
             </DialogDescription>
           </DialogHeader>
+          {opening && action.variables === "onlineHost" ? (
+            <OnlineConnectionProgress target={roomId} hosting />
+          ) : null}
           {hosting ? (
             <>
               <section className="space-y-4" aria-label="邀请信息">
@@ -239,9 +244,7 @@ export function LanRoom({ roomId }: { roomId: string }) {
                 ) : null}
                 {unavailable ? (
                   <div className="space-y-2 text-sm">
-                    <p role="alert" className="text-destructive">
-                      {online.error ?? "联机服务连接已断开"}
-                    </p>
+                    <ConnectionError message={online.error ?? "联机服务连接已断开"} />
                     <p className="text-muted-foreground">
                       已连上的玩家仍可继续游戏。需要邀请新玩家时，请关闭联机后重新生成房间码。
                     </p>
@@ -382,8 +385,10 @@ export function LanRoom({ roomId }: { roomId: string }) {
             </div>
           )}
           {action.error || status.error ? (
-            <div role="alert" className="text-destructive space-y-2 text-sm">
-              <p>{action.error?.message ?? status.error?.message}</p>
+            <div className="space-y-2 text-sm">
+              <ConnectionError
+                message={action.error?.message ?? status.error?.message ?? "联机操作失败"}
+              />
               {status.error ? (
                 <Button variant="outline" onClick={() => void status.refetch()}>
                   重新读取状态

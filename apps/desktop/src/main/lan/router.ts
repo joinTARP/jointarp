@@ -20,6 +20,9 @@ function service(context: DesktopRpcContext) {
   return context.lan;
 }
 export const lanRouter = {
+  onlineProgress: procedure
+    .input(z.object({ target: z.string().min(1).max(80) }))
+    .handler(({ context, input }) => service(context).online.progress(input.target)),
   onlineHost: procedure
     .input(room)
     .handler(({ context, input }) => service(context).online.host(input.roomId)),

@@ -236,6 +236,17 @@ export class NativePeer extends EventTarget {
     ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     return createHash("sha256").update(JSON.stringify(endpoints)).digest("hex");
   }
+  progress() {
+    const stage = !this.described
+      ? "signaling"
+      : this.state === "connected"
+        ? "channels"
+        : "connecting";
+    return {
+      stage,
+      detail: `已收集 ${this.localCandidates} 个本机候选，收到 ${this.remoteCandidates} 个对方候选；数据通道 ${this.opened}/2`,
+    } as const;
+  }
   diagnostics() {
     // 只记录状态和数量，不包含 SDP、候选 IP 或身份凭证。
     return `P2P=${this.state}，ICE=${this.iceState}，候选收集=${this.gatheringState}，描述发送/接收=${Number(this.localDescription)}/${Number(this.described)}，候选发送/接收=${this.localCandidates}/${this.remoteCandidates}，通道=${this.opened}/2`;

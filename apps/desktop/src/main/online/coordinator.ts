@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { OnlineStage } from "../../shared/online-progress";
 import { NativePeer, type PeerSignal } from "./native-peer";
 
 const credentialSchema = z.object({
@@ -51,6 +52,7 @@ export class Coordinator {
     private readonly host: boolean,
     private readonly onPeer: (peer: NativePeer) => void,
     private readonly iceOverride?: string[],
+    private readonly onProgress?: (stage: OnlineStage) => void,
   ) {}
   private async http(path: string, method: string, body?: unknown) {
     const response = await fetch(`${this.base}${path}`, {
@@ -63,7 +65,12 @@ export class Coordinator {
     if (!response.ok) throw Error(`协调服务请求失败（${response.status}）`);
     return response.json();
   }
-  static async create(base: string, onPeer: (peer: NativePeer) => void, ice?: string[]) {
+  static async create(
+    base: string,
+    onPeer: (peer: NativePeer) => void,
+    ice?: string[],
+    onProgress?: (stage: OnlineStage) => void,
+  ) {
     base = coordinatorUrl(base);
     const response = await fetch(`${base}/v1/rooms`, {
       method: "POST",
@@ -74,7 +81,15 @@ export class Coordinator {
     });
     if (!response.ok) throw Error(`无法开放互联网房间（${response.status}）`);
     const credentials = credentialSchema.parse(await response.json());
-    const room = new Coordinator(base, credentials.code, credentials.hostToken, true, onPeer, ice);
+    const room = new Coordinator(
+      base,
+      credentials.code,
+      credentials.hostToken,
+      true,
+      onPeer,
+      ice,
+      onProgress,
+    );
     try {
       await room.connect();
       return room;
@@ -88,6 +103,7 @@ export class Coordinator {
     code: string,
     onPeer: (peer: NativePeer) => void,
     ice?: string[],
+    onProgress?: (stage: OnlineStage) => void,
   ) {
     base = coordinatorUrl(base);
     if (!/^\d{6}$/.test(code)) throw Error("请输入六位房间码");
@@ -98,7 +114,15 @@ export class Coordinator {
     });
     if (!response.ok) throw Error(`无法加入，请检查房间码与房主网络（${response.status}）`);
     const credentials = guestSchema.parse(await response.json());
-    const room = new Coordinator(base, code, credentials.guestToken, false, onPeer, ice);
+    const room = new Coordinator(
+      base,
+      code,
+      credentials.guestToken,
+      false,
+      onPeer,
+      ice,
+      onProgress,
+    );
     try {
       await room.connect();
       return room;
@@ -108,6 +132,7 @@ export class Coordinator {
     }
   }
   private async loadIce() {
+    this.onProgress?.("ice");
     if (this.iceOverride !== undefined) {
       this.ice = this.iceOverride;
       return;
@@ -121,6 +146,7 @@ export class Coordinator {
       this.ice = ["stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"];
   }
   private connect() {
+    this.onProgress?.("coordinator");
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(Error(`协调连接超时（${this.base}）；请检查协调服务及 WebSocket 网络连通性`));
@@ -161,6 +187,7 @@ export class Coordinator {
                 await this.loadIce();
                 this.makePeer("host");
               }
+              if (!this.host && !welcome.approved) this.onProgress?.("waiting");
               clearTimeout(timer);
               resolve();
             } else if (data.type === "peer-joined" && this.host) {
@@ -250,6 +277,7 @@ export class Coordinator {
         this.socket.send(JSON.stringify({ type: "signal", to: id, data }));
       },
     });
+    this.onProgress?.("signaling");
     this.peers.set(id, peer);
     peer.addEventListener(
       "close",
