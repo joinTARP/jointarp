@@ -38,7 +38,7 @@ export function ModuleImportNotice() {
     if (!pathname.startsWith("/game/"))
       void navigate({ to: "/module", search: { path: state.result.path } });
   }, [state, pathname, reference, navigate]);
-  if (reference || !state || state.status === "idle") return null;
+  if (reference || !state || state.status === "idle" || state.status === "selecting") return null;
   const busyKey = `${state.id}:${state.busyNotice}`;
   const busy = Boolean(state.busyNotice) && dismissedBusy !== busyKey;
   const run = (task: () => Promise<unknown>) => action.mutate(task);
@@ -51,7 +51,9 @@ export function ModuleImportNotice() {
       >
         <p className="text-sm font-medium">
           {state.status === "running"
-            ? "正在下载并校验模组…"
+            ? state.canRetry
+              ? "正在下载并校验模组…"
+              : "正在导入并校验模组…"
             : state.status === "success"
               ? `已导入「${state.result?.name}」`
               : state.status === "confirm"

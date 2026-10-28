@@ -20,7 +20,7 @@ export class ModuleImportService {
   }
 
   private available(): void {
-    if (this.state.status === "running" || this.state.status === "confirm") {
+    if (["selecting", "running", "confirm"].includes(this.state.status)) {
       this.state = { ...this.state, busyNotice: (this.state.busyNotice ?? 0) + 1 };
       throw new Error("正在导入模组，请稍后重试。");
     }
@@ -34,7 +34,7 @@ export class ModuleImportService {
   }
 
   report(error: unknown): void {
-    if (this.state.status === "running" || this.state.status === "confirm") return;
+    if (["selecting", "running", "confirm"].includes(this.state.status)) return;
     this.request = undefined;
     this.state = {
       id: this.state.id + 1,
@@ -89,23 +89,28 @@ export class ModuleImportService {
   }
 
   dismiss(id: number): void {
-    if (id !== this.state.id || this.state.status === "running") return;
+    if (id !== this.state.id || ["selecting", "running"].includes(this.state.status)) return;
     this.state = { id, status: "idle" };
     this.request = undefined;
   }
 
   async local(
     source: string,
-    run: (directory: string) => Promise<ModuleImportResult | null>,
+    select: () => Promise<string | null>,
+    run: (directory: string, path: string) => Promise<ModuleImportResult>,
   ): Promise<ModuleImportResult | null> {
     this.available();
     this.request = undefined;
-    this.state = { id: this.state.id + 1, status: "running", source };
+    this.state = { id: this.state.id + 1, status: "selecting", source };
     try {
-      const result = await run(await this.directory());
-      this.state = result
-        ? { ...this.state, status: "success", result }
-        : { id: this.state.id, status: "idle" };
+      const path = await select();
+      if (!path) {
+        this.state = { id: this.state.id, status: "idle" };
+        return null;
+      }
+      this.state = { ...this.state, status: "running" };
+      const result = await run(await this.directory(), path);
+      this.state = { ...this.state, status: "success", result };
       return result;
     } catch (error) {
       this.state = {

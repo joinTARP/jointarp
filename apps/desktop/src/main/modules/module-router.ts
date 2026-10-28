@@ -70,7 +70,7 @@ export const moduleRouter = {
       try {
         return await context.moduleImports.local(
           input.kind === "zip" ? "ZIP 文件" : "本地文件夹",
-          async (directory) => {
+          async () => {
             const selection = await showPathPicker({
               title: input.kind === "zip" ? "选择模组 ZIP 文件" : "选择模组文件夹",
               properties: [input.kind === "zip" ? "openFile" : "openDirectory"],
@@ -78,9 +78,9 @@ export const moduleRouter = {
                 ? { filters: [{ name: "ZIP 压缩包", extensions: ["zip"] }] }
                 : {}),
             });
-            if (selection.canceled || !selection.filePaths[0]) return null;
-            return await importLocalModule(directory, selection.filePaths[0], input.kind);
+            return selection.canceled ? null : (selection.filePaths[0] ?? null);
           },
+          (directory, path) => importLocalModule(directory, path, input.kind),
         );
       } catch (error) {
         throw new ORPCError("BAD_REQUEST", {
