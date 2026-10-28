@@ -6,6 +6,7 @@ import { RPCLink } from "@orpc/client/message-port";
 import { os, ORPCError, type Router, type RouterClient } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/message-port";
 
+import type { OnlineProgress, OnlineStage } from "../../shared/online-progress";
 import type { DesktopRpcContext } from "../desktop-rpc-context";
 import {
   assertLanAccess,
@@ -154,6 +155,28 @@ export class OnlineRooms {
   private guest?: Guest;
   private joining?: { code: string; promise: Promise<Guest>; cancel: () => void };
   private generation = 0;
+  private attempt?: { target: string; progress: OnlineProgress; peer?: NativePeer };
+  progress(target: string): OnlineProgress | null {
+    const attempt = this.attempt;
+    if (!attempt || attempt.target !== target) return null;
+    if (attempt.peer && ["signaling", "connecting", "channels"].includes(attempt.progress.stage))
+      return { ...attempt.progress, ...attempt.peer.progress() };
+    return attempt.progress;
+  }
+  private begin(target: string) {
+    const attempt = {
+      target,
+      progress: { stage: "service", startedAt: Date.now() } as OnlineProgress,
+      peer: undefined as NativePeer | undefined,
+    };
+    this.attempt = attempt;
+    return {
+      attempt,
+      update: (stage: OnlineStage) => {
+        attempt.progress.stage = stage;
+      },
+    };
+  }
   private readonly base: string;
   private readonly ice?: string[];
   constructor(
@@ -179,6 +202,7 @@ export class OnlineRooms {
       return this.rooms.status(roomId);
     }
     const generation = this.generation;
+    const { update } = this.begin(roomId);
     const host = await this.rooms.prepareHost(roomId, false);
     if (generation !== this.generation) {
       this.rooms.abandonHost(host);
@@ -190,6 +214,7 @@ export class OnlineRooms {
         this.base,
         (peer) => attachHost(host, peer, this.router),
         this.ice,
+        update,
       );
     } catch (error) {
       this.rooms.abandonHost(host);
@@ -203,6 +228,7 @@ export class OnlineRooms {
       coordinator.close();
       throw Error("互联网房间已经开放");
     }
+    update("connected");
     this.hosted = { roomId, coordinator };
     return this.rooms.status(roomId);
   }
@@ -217,13 +243,14 @@ export class OnlineRooms {
     if (this.joining?.code === code) return this.joining.promise;
     this.cancelJoin();
     const generation = this.generation;
+    const { attempt, update } = this.begin(code);
     let cancel = () => {};
     const promise = (async () => {
       let resolve!: (peer: NativePeer) => void;
       const native = new Promise<NativePeer>((ready) => {
         resolve = ready;
       });
-      const coordinator = await Coordinator.join(this.base, code, resolve, this.ice);
+      const coordinator = await Coordinator.join(this.base, code, resolve, this.ice, update);
       if (generation !== this.generation) {
         coordinator.close();
         throw Error("加入房间已取消");
@@ -246,6 +273,7 @@ export class OnlineRooms {
       });
       try {
         const peer = await Promise.race([native, timedOut]);
+        attempt.peer = peer;
         const [port, resourcePort] = await Promise.all([peer.ready, peer.resourcesReady]);
         if (generation !== this.generation) throw Error("加入房间已取消");
         const link = new RPCLink({ port });
@@ -306,6 +334,7 @@ export class OnlineRooms {
       signal?.removeEventListener("abort", cancelled);
     }
     signal?.throwIfAborted();
+    if (this.attempt?.target === code) this.attempt.progress.stage = "authenticating";
     const challenge = challengeSchema.parse(await guest.client.challenge(undefined, { signal }));
     const { context, proof } = await this.rooms.joinIdentity(
       challenge,
@@ -317,6 +346,8 @@ export class OnlineRooms {
       this.cancelJoin(code);
       return reply;
     }
+    if (this.attempt?.target === code)
+      this.attempt.progress.stage = reply.status === "approved" ? "connected" : "approval";
     if (reply.status !== "approved") return reply;
     if (existsSync(join(context.sessionsRoot, reply.roomId))) {
       this.cancelJoin(code);
@@ -354,6 +385,7 @@ export class OnlineRooms {
     }
     this.joining?.cancel();
     this.joining = undefined;
+    this.attempt = undefined;
   }
   stop(roomId: string) {
     this.generation++;
@@ -372,5 +404,6 @@ export class OnlineRooms {
     }
     this.joining?.cancel();
     this.joining = undefined;
+    this.attempt = undefined;
   }
 }

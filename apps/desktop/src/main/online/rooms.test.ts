@@ -79,17 +79,21 @@ test("六位码原生房间：审批与权限、模组图片、身份恢复，�
   try {
     const opening = host.online.host(room.id);
     await requested.promise;
+    assert.equal(host.online.progress(room.id)?.stage, "service");
     // 线上房间尚未就绪时，不能把准备中的房主误报为已开放的内网房间。
     assert.equal(host.status(room.id).hosting, false);
     assert.equal(host.status(room.id).online, null);
     release.resolve();
     const hosted = await opening;
     assert.equal(hosted.hosting, true);
+    assert.equal(host.online.progress(room.id)?.stage, "connected");
     assert.equal(hosted.online?.code, "012345");
     assert.deepEqual(hosted.addresses, []);
     assert.equal((await guest.online.join(coordinator.code)).status, "pending");
     assert.equal(guest.remote(room.id), undefined);
+    assert.equal(guest.online.progress(coordinator.code)?.stage, "approval");
     guest.online.cancelJoin(coordinator.code);
+    assert.equal(guest.online.progress(coordinator.code), null);
     for (let i = 0; i < 100 && host.status(room.id).pending.length; i++) await Bun.sleep(5);
     assert.equal(host.status(room.id).pending.length, 0);
     assert.equal((await guest.online.join(coordinator.code)).status, "pending");
