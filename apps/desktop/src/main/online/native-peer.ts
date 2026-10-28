@@ -108,6 +108,12 @@ export class NativePeer extends EventTarget {
   private closed = false;
   private described = false;
   private opened = 0;
+  private state = "new";
+  private iceState = "new";
+  private gatheringState = "new";
+  private localDescription = false;
+  private localCandidates = 0;
+  private remoteCandidates = 0;
   private candidates: Extract<PeerSignal, { kind: "candidate" }>[] = [];
   private resolve!: (port: StreamPort) => void;
   private reject!: (error: Error) => void;
@@ -130,7 +136,13 @@ export class NativePeer extends EventTarget {
     // 调用方可能在交换信令后才等待 ready。
     void this.ready.catch(() => undefined);
     this.peer = new PeerConnection("tarp-rpc", { iceServers: options.iceServers });
-    this.timer = setTimeout(() => this.close(Error("联机握手超时")), 30_000);
+    this.timer = setTimeout(
+      () =>
+        this.close(
+          Error(`联机握手超时；${this.diagnostics()}。当前仅支持直连，可尝试切换网络后重试`),
+        ),
+      30_000,
+    );
     const emit = (signal: PeerSignal) => {
       if (this.closed) return;
       try {
@@ -140,11 +152,25 @@ export class NativePeer extends EventTarget {
       }
     };
     this.peer.onLocalDescription((sdp, type) => {
-      if (type === "offer" || type === "answer") emit({ kind: "description", sdp, type });
+      if (type === "offer" || type === "answer") {
+        this.localDescription = true;
+        emit({ kind: "description", sdp, type });
+      }
     });
-    this.peer.onLocalCandidate((candidate, mid) => emit({ kind: "candidate", candidate, mid }));
+    this.peer.onLocalCandidate((candidate, mid) => {
+      this.localCandidates++;
+      emit({ kind: "candidate", candidate, mid });
+    });
+    this.peer.onIceStateChange((state) => {
+      this.iceState = state;
+    });
+    this.peer.onGatheringStateChange((state) => {
+      this.gatheringState = state;
+    });
     this.peer.onStateChange((state) => {
-      if (["failed", "closed", "disconnected"].includes(state)) this.close(Error("对端连接已断开"));
+      this.state = state;
+      if (["failed", "closed", "disconnected"].includes(state))
+        this.close(Error(`对端连接已断开；${this.diagnostics()}`));
     });
     this.peer.onDataChannel((channel) => this.attach(channel));
     if (options.initiator) {
@@ -188,9 +214,11 @@ export class NativePeer extends EventTarget {
       for (const entry of this.candidates) this.peer.addRemoteCandidate(entry.candidate, entry.mid);
       this.candidates = [];
     } else if (this.described) {
+      this.remoteCandidates++;
       this.peer.addRemoteCandidate(signal.candidate, signal.mid);
     } else {
       if (this.candidates.length >= 128) throw Error("远端候选数量超限");
+      this.remoteCandidates++;
       this.candidates.push(signal);
     }
   }
@@ -207,6 +235,10 @@ export class NativePeer extends EventTarget {
       identity(this.peer.remoteDescription()?.sdp),
     ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     return createHash("sha256").update(JSON.stringify(endpoints)).digest("hex");
+  }
+  diagnostics() {
+    // 只记录状态和数量，不包含 SDP、候选 IP 或身份凭证。
+    return `P2P=${this.state}，ICE=${this.iceState}，候选收集=${this.gatheringState}，描述发送/接收=${Number(this.localDescription)}/${Number(this.described)}，候选发送/接收=${this.localCandidates}/${this.remoteCandidates}，通道=${this.opened}/2`;
   }
   selectedCandidatePair() {
     return this.peer.getSelectedCandidatePair();
