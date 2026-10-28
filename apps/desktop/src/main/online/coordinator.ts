@@ -123,7 +123,7 @@ export class Coordinator {
   private connect() {
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(Error("协调连接超时"));
+        reject(Error(`协调连接超时（${this.base}）；请检查协调服务及 WebSocket 网络连通性`));
         this.close();
       }, 10_000);
       const Socket = WebSocket as unknown as new (

@@ -234,7 +234,15 @@ export class OnlineRooms {
           coordinator.close();
           reject(Error("加入房间已取消"));
         };
-        timeout = setTimeout(() => reject(Error("等待协商超时")), 30_000);
+        timeout = setTimeout(
+          () =>
+            reject(
+              Error(
+                `等待房主协商超时；协调服务=${coordinator.online ? "已连接" : "已断开"}${coordinator.error ? `；${coordinator.error}` : ""}。请确认房主仍在线并重新开放房间`,
+              ),
+            ),
+          30_000,
+        );
       });
       try {
         const peer = await Promise.race([native, timedOut]);
