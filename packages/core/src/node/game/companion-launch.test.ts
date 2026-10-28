@@ -12,9 +12,12 @@ import type { LaunchAction } from "../../shared/launch";
 import { advanceLaunch, launchState } from "../sessions/launch-store";
 import { createSession, openSessionDatabase } from "../sessions/session-store";
 import { ChatService } from "./chat-service";
+import type { Runtime } from "./chat/types";
 import { companionContext } from "./companion";
 
-async function fixture(options: { presets?: "none" | "self"; aiOpening?: boolean } = {}) {
+async function fixture(
+  options: { presets?: "none" | "self"; aiOpening?: boolean; onRun?: Runtime["run"] } = {},
+) {
   const data = await createTestModule();
   const path = join(data.modulePath, "module.json");
   const module = JSON.parse(await readFile(path, "utf8"));
@@ -32,6 +35,7 @@ async function fixture(options: { presets?: "none" | "self"; aiOpening?: boolean
     {
       run: async (args) => {
         prompts.push(args.text);
+        await options.onRun?.(args);
       },
     },
     async () => {
@@ -326,6 +330,97 @@ test("开始冒险拒绝过期进度和未完成的队友预留，取消后可�
     await f.history();
     assert.equal((await f.state())!.room.opening, "complete");
   } finally {
+    await f.close();
+  }
+});
+
+test("无 AI 预设的离线成员可接力，接回及移除保持正确角色归属", async () => {
+  const f = await fixture({ presets: "none" });
+  try {
+    await f.chat.registerMember(f.room.id, f.player);
+    await assert.rejects(f.chat.setMemberRelay(f.room.id, f.player.id, true), /尚未选择角色/);
+    await f.confirm();
+    const characterId = (await f.state())!.progress.characterId;
+    await f.chat.setMemberRelay(f.room.id, f.player.id, true);
+    let settings = await f.chat.companionSettings(f.room.id);
+    assert.equal(settings.members.find((member) => member.id === f.player.id)?.relay, true);
+    assert.equal(
+      settings.seats.find((seat) => seat.id === f.player.id)?.companion?.characterId,
+      characterId,
+    );
+    assert.equal(
+      settings.characters.find((character) => character.id === characterId)?.controllerId,
+      f.player.id,
+    );
+    await assert.rejects(f.chat.saveCompanion(f.room.id, f.player.id, null, f.player), /接力入口/);
+    await f.chat.setMemberRelay(f.room.id, f.player.id, false);
+    settings = await f.chat.companionSettings(f.room.id);
+    assert.equal(settings.members[0]?.relay, false);
+    assert.equal(
+      settings.seats.some((seat) => seat.id === f.player.id),
+      false,
+    );
+    assert.equal(
+      settings.characters.find((character) => character.id === characterId)?.controllerId,
+      f.player.id,
+    );
+    await f.chat.setMemberRelay(f.room.id, f.player.id, true);
+    await f.chat.removeMember(f.room.id, f.player.id);
+    settings = await f.chat.companionSettings(f.room.id);
+    assert.equal(settings.members.length, 0);
+    assert.equal(
+      settings.seats.some((seat) => seat.id === f.player.id),
+      false,
+    );
+    assert.equal(
+      settings.characters.find((character) => character.id === characterId)?.controllerId,
+      null,
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("接回角色等待当前 AI 行动完成，等待期间不提前撤销接力", async () => {
+  let finishRun!: () => void;
+  const running = new Promise<void>((resolve) => {
+    finishRun = resolve;
+  });
+  let started = false;
+  const f = await fixture({
+    presets: "self",
+    onRun: async () => {
+      started = true;
+      await running;
+    },
+  });
+  try {
+    await f.confirm();
+    await f.act("beginAdventure");
+    await f.chat.registerMember(f.room.id, f.player);
+    await f.chat.setMemberRelay(f.room.id, f.player.id, true);
+    await f.chat.send(
+      {
+        roomId: f.room.id,
+        clientMessageId: randomUUID(),
+        chatOnly: true,
+        text: `[@向导](#mention/${f.player.id}) 请回应一下。`,
+      },
+      { id: randomUUID(), nickname: "同行者" },
+    );
+    await waitFor(async () => assert.equal(started, true));
+    let returned = false;
+    const reclaim = f.chat.setMemberRelay(f.room.id, f.player.id, false).then(() => {
+      returned = true;
+    });
+    await Promise.resolve();
+    assert.equal(returned, false);
+    assert.equal((await f.chat.companionSettings(f.room.id)).members[0]?.relay, true);
+    finishRun();
+    await reclaim;
+    assert.equal((await f.chat.companionSettings(f.room.id)).members[0]?.relay, false);
+  } finally {
+    finishRun();
     await f.close();
   }
 });

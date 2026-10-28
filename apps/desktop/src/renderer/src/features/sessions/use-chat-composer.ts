@@ -26,6 +26,7 @@ interface ChatComposerOptions {
   isHostModelReady(roomId: string, signal?: AbortSignal): Promise<boolean>;
   player: Player | null;
   ready: boolean;
+  relayActive?: boolean;
   hostReady: boolean;
   mentions: readonly MentionCandidate[];
   log: {
@@ -48,6 +49,7 @@ export function useChatComposer({
   isHostModelReady,
   player,
   ready,
+  relayActive = false,
   hostReady,
   mentions,
   log,
@@ -153,7 +155,8 @@ export function useChatComposer({
   }, [playerId, roomId]);
 
   async function send(retry?: SendInput) {
-    if (sendingLock.current || continuing || modeChanging || !player || !ready) return;
+    if (relayActive || sendingLock.current || continuing || modeChanging || !player || !ready)
+      return;
     const text = (retry?.text ?? currentText).trim();
     const movement = retry ? retry.movement : plan;
     if (!text && !movement) return;
@@ -502,6 +505,7 @@ export function useChatComposer({
       Boolean(pendingInput),
     submissionDisabled: !isHost || modeChanging || sending || continuing || !ready,
     sendDisabled:
+      relayActive ||
       sending ||
       continuing ||
       modeChanging ||

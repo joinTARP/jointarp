@@ -183,9 +183,8 @@ test("六位码原生房间：审批与权限、模组图片、身份恢复，�
     // 重建客户端，证明持久恢复凭证与个人笔记不依赖信令身份。
     guest.close();
     guest = new LanService(guestDirectory, async () => guestContext, router, options);
-    assert.equal((await guest.online.join(coordinator.code)).status, "pending");
-    await host.decide(room.id, host.status(room.id).pending[0]!.id, true);
     assert.equal((await guest.online.join(coordinator.code)).status, "approved");
+    assert.equal((await guest.recent())[0]?.roomId, room.id);
     let restored = createORPCClient<RouterClient<typeof router>>(guest.remote(room.id)!.link);
     assert.equal(
       await restored.sessions.notes.get({ roomId: room.id, playerId: guestPlayer.id }),
@@ -198,9 +197,8 @@ test("六位码原生房间：审批与权限、模组图片、身份恢复，�
     active.peer.close();
     assert.equal(guest.status(room.id).connection, "disconnected");
     assert(previousRemote.controller.signal.aborted);
-    assert.equal((await guest.online.join(coordinator.code)).status, "pending");
-    await host.decide(room.id, host.status(room.id).pending[0]!.id, true);
     assert.equal((await guest.online.join(coordinator.code)).status, "approved");
+    assert.equal((await guest.recent())[0]?.roomId, room.id);
     assert.notEqual(guest.remote(room.id), previousRemote);
     restored = createORPCClient<RouterClient<typeof router>>(guest.remote(room.id)!.link);
     const history = await restored.game.chat.history({ roomId: room.id, limit: 10 });

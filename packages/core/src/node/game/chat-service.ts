@@ -12,6 +12,7 @@ import type { LaunchAction } from "../../shared/launch";
 import type { RoomProjection } from "../../shared/room-state";
 import type { SessionMetrics } from "../../shared/session-metrics";
 import type { TtsVoiceOverride } from "../../shared/voice";
+import { readAdventureState, updateAdventureState } from "../sessions/adventure-state";
 import { readCharacters } from "../sessions/character-db";
 import { syncModule } from "../sessions/module-sync";
 import { notifyRoomChanged } from "../sessions/room-changes";
@@ -519,9 +520,32 @@ export class ChatService {
   }
 
   async send(input: SendInput, player: Player): Promise<ChatMessage> {
+    const state = await this.state(input.roomId);
+    if (
+      readAdventureState(state.db).party.members.some(
+        (member) => member.id === player.id && member.relay,
+      )
+    )
+      throw new Error("请先接回角色再发送消息");
     return this.submissions.send(input, player);
   }
 
+  async registerMember(roomId: string, player: Player) {
+    const state = await this.state(roomId);
+    this.store.transaction(state, () =>
+      updateAdventureState(state.db, (current) => {
+        const member = current.party.members.find((item) => item.id === player.id);
+        if (member) member.nickname = player.nickname;
+        else current.party.members.push({ ...player, relay: false });
+      }),
+    );
+  }
+  async setMemberRelay(roomId: string, playerId: string, enabled: boolean) {
+    return this.companions.setRelay(roomId, playerId, enabled);
+  }
+  async removeMember(roomId: string, playerId: string) {
+    return this.companions.removeMember(roomId, playerId);
+  }
   async companionSettings(roomId: string) {
     return this.companions.companionSettings(roomId);
   }
