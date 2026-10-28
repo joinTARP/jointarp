@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { FileArchive, Folder, FolderInput, GitBranch, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 
@@ -19,6 +19,7 @@ type ImportSource = { kind: "zip" | "folder" } | { kind: "git"; url: string };
 
 export function ImportModuleButton({ directory }: { directory?: string }) {
   const [open, setOpen] = useState(false);
+  const [sourceKind, setSourceKind] = useState<ImportSource["kind"]>("zip");
   const [url, setUrl] = useState("");
   const [importedName, setImportedName] = useState<string | null>(null);
   const importer = useMutation({
@@ -26,7 +27,8 @@ export function ImportModuleButton({ directory }: { directory?: string }) {
       source.kind === "git"
         ? await desktopRpc.modules.importGit({ url: source.url })
         : await desktopRpc.modules.importLocal(source),
-    onSuccess: async (module) => {
+    onSuccess: async (module, source) => {
+      if (source.kind !== "git" && !module) return;
       if (!module) {
         setOpen(false);
         return;
@@ -37,6 +39,16 @@ export function ImportModuleButton({ directory }: { directory?: string }) {
       setUrl("");
     },
   });
+  const importState = useQuery({
+    ...desktopOrpc.modules.importState.queryOptions(),
+    enabled: importer.isPending && importer.variables?.kind !== "git",
+    staleTime: 0,
+    refetchInterval: 250,
+  });
+  const importing =
+    importer.isPending &&
+    importState.dataUpdatedAt > importer.submittedAt &&
+    importState.data?.status === "running";
   return (
     <div className="flex flex-wrap items-center justify-end gap-3">
       {importedName ? (
@@ -72,7 +84,14 @@ export function ImportModuleButton({ directory }: { directory?: string }) {
               选择 ZIP、文件夹或 Git 仓库，将模组保存到你的模组库。
             </DialogDescription>
           </DialogHeader>
-          <Tabs defaultValue="zip" onValueChange={() => importer.reset()}>
+          <Tabs
+            value={sourceKind}
+            onValueChange={(value) => {
+              if (importer.isPending || !value) return;
+              setSourceKind(value as ImportSource["kind"]);
+              importer.reset();
+            }}
+          >
             <TabsList className="w-full" aria-label="模组导入方式">
               <TabsTrigger value="zip" disabled={importer.isPending}>
                 <FileArchive aria-hidden="true" />
@@ -96,12 +115,16 @@ export function ImportModuleButton({ directory }: { directory?: string }) {
                 disabled={importer.isPending}
                 onClick={() => importer.mutate({ kind: "zip" })}
               >
-                {importer.isPending ? (
+                {importing ? (
                   <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
                 ) : (
                   <FileArchive className="size-4" aria-hidden="true" />
                 )}
-                {importer.isPending ? "正在导入并校验…" : "选择 ZIP 文件并导入"}
+                {importing
+                  ? "正在导入并校验…"
+                  : importer.isPending
+                    ? "请选择 ZIP 文件…"
+                    : "选择 ZIP 文件并导入"}
               </Button>
             </TabsContent>
             <TabsContent value="folder" className="space-y-4 pt-3">
@@ -114,12 +137,16 @@ export function ImportModuleButton({ directory }: { directory?: string }) {
                 disabled={importer.isPending}
                 onClick={() => importer.mutate({ kind: "folder" })}
               >
-                {importer.isPending ? (
+                {importing ? (
                   <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
                 ) : (
                   <Folder className="size-4" aria-hidden="true" />
                 )}
-                {importer.isPending ? "正在导入并校验…" : "选择文件夹并导入"}
+                {importing
+                  ? "正在导入并校验…"
+                  : importer.isPending
+                    ? "请选择文件夹…"
+                    : "选择文件夹并导入"}
               </Button>
             </TabsContent>
             <TabsContent value="git" className="pt-3">
