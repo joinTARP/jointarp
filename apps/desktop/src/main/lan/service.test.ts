@@ -303,9 +303,15 @@ test("完全离线：开局前入房、审批、双向聊天与订阅、私有�
       ).status,
       403,
     );
-    assert.equal((await guest.join(address)).status, "pending");
-    await host.decide(room.id, host.status(room.id).pending[0]!.id, false);
-    assert.equal((await guest.join(address)).status, "rejected");
+    assert.equal((await guest.join(address)).status, "approved");
+    assert.equal(
+      (await chat.companionSettings(room.id)).members.find((member) => member.id === guestPlayer.id)
+        ?.online,
+      false,
+    );
+    assert.equal((await guest.recent())[0]?.roomId, room.id);
+    assert.equal((await guest.recent())[0]?.name, "离线联机");
+    guest.stop(room.id);
     host.stop(room.id);
     assert.equal(host.status(room.id).hosting, false);
     assert.equal(guest.status(room.id).remote, false);
@@ -317,9 +323,10 @@ test("完全离线：开局前入房、审批、双向聊天与订阅、私有�
     try {
       await host.host(room.id);
       const reopened = `127.0.0.1:${(host as unknown as { hosted: { server: { port: number } } }).hosted.server.port}`;
-      assert.equal((await restored.join(reopened)).status, "pending");
-      await host.decide(room.id, host.status(room.id).pending[0]!.id, true);
-      assert.equal((await restored.join(reopened)).status, "approved");
+      assert.equal((await restored.recent())[0]?.roomId, room.id);
+      await assert.rejects(restored.join(reopened, undefined, randomUUID()), /另一个房间/);
+      assert.equal((await restored.join(reopened, undefined, room.id)).status, "approved");
+      assert.equal((await restored.recent()).length, 1);
       const restoredClient: RouterClient<typeof router> = createORPCClient(
         restored.remote(room.id)!.link,
       );
@@ -333,6 +340,25 @@ test("完全离线：开局前入房、审批、双向聊天与订阅、私有�
       );
       const restoredResources = await restored.moduleResources(room.id);
       assert.equal(restoredResources.baseline.version, resources.baseline.version);
+      await restored.forgetRecent(room.id);
+      assert.deepEqual(await restored.recent(), []);
+      assert(restored.remote(room.id), "移除本机记录不应断开当前连接");
+      assert.equal(
+        (await restoredClient.game.launch.get({ roomId: room.id }))?.progress.characterId,
+        guestCharacter,
+      );
+      await host.removeMember(room.id, guestPlayer.id);
+      assert.equal(
+        (await chat.companionSettings(room.id)).members.some(
+          (member) => member.id === guestPlayer.id,
+        ),
+        false,
+      );
+      await assert.rejects(restored.moduleResources(room.id));
+      restored.stop(room.id);
+      assert.equal((await restored.join(reopened)).status, "pending");
+      await host.decide(room.id, host.status(room.id).pending[0]!.id, false);
+      assert.equal((await restored.join(reopened)).status, "rejected");
       host.stop(room.id);
       await assert.rejects(restored.moduleResources(room.id));
       await assert.rejects(

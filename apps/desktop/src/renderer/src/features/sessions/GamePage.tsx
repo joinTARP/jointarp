@@ -30,7 +30,7 @@ import { CharacterSummary } from "./CharacterSummary";
 import { ChatPanel, type ChatPanelHandle } from "./ChatPanel";
 import { GameParty } from "./GameParty";
 import { GameToolDialog } from "./GameToolDialog";
-import { LanRoom } from "./LanRoom";
+import { LanRoom, ReconnectRoom } from "./LanRoom";
 import { RoomDocumentScope } from "./room-document";
 import { RoomNotes } from "./RoomNotes";
 import { useRoomLaunch, useRoomSession } from "./use-room-state";
@@ -94,7 +94,7 @@ export function GamePage() {
   const characterError = player.error ?? launch.error;
   const shellPending = session.isPending || launch.isPending;
   const chatPending = session.isSuccess && active && !launch.isPending && !chatSettled;
-  const booting = shellPending || chatPending;
+  const booting = (shellPending || chatPending) && !session.error && !launch.error;
   const coverStage = atGate;
 
   const seenRoom = useRef(roomId);
@@ -203,6 +203,7 @@ export function GamePage() {
                       session={session.data}
                       characters={launch.data?.characters ?? []}
                       player={player.data}
+                      isHost={lan.data?.remote === false}
                       onMention={
                         ready && active ? (id) => chatActions.current?.mention(id) : undefined
                       }
@@ -264,7 +265,7 @@ export function GamePage() {
                     <DialogTitle>退出游戏？</DialogTitle>
                     <DialogDescription>
                       {lan.data?.remote
-                        ? "退出后断开内网连接，再次加入需要房主同意。存档保存在房主电脑。"
+                        ? "退出后断开房间连接，可从首页记录重新加入；未被移除时无需重复审核。存档保存在房主电脑。"
                         : "这段冒险会保持进行中。退出会停止联机，其他玩家将断开连接。"}
                     </DialogDescription>
                   </DialogHeader>
@@ -286,7 +287,7 @@ export function GamePage() {
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <header
                 aria-hidden={coverStage || undefined}
-                inert={coverStage || undefined}
+                inert={(coverStage && !session.error && !launch.error) || undefined}
                 className={`relative flex shrink-0 items-center gap-3 overflow-hidden pr-14 motion-reduce:transition-none ${entranceSettled ? "transition-[height,opacity] duration-500 ease-out" : ""} ${collapsed ? "pl-32" : "pl-5"} ${coverStage ? "h-0 opacity-0" : "h-12 opacity-100"}`}
               >
                 <h1 className="max-w-[50%] min-w-0 truncate text-xs font-medium">聊天</h1>
@@ -298,13 +299,17 @@ export function GamePage() {
                     <p className="text-destructive mb-4">
                       无法打开冒险：{session.error?.message ?? launch.error?.message}
                     </p>
-                    <Button
-                      onClick={() => {
-                        void launch.refetch();
-                      }}
-                    >
-                      重试
-                    </Button>
+                    {lan.data?.remote ? (
+                      <ReconnectRoom roomId={roomId} />
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          void launch.refetch();
+                        }}
+                      >
+                        重试
+                      </Button>
+                    )}
                   </div>
                 ) : null}
                 {session.data && !active ? (

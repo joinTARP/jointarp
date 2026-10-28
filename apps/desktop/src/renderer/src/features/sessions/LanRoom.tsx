@@ -15,7 +15,9 @@ import {
 import { Input } from "../../components/ui/input";
 import { desktopOrpc, desktopRpc } from "../../desktop-rpc";
 import { ConnectionError } from "./ConnectionError";
+import { localRoomModuleLoader } from "./local-room-module";
 import { OnlineConnectionProgress } from "./OnlineConnectionProgress";
+import { roomConnection } from "./room-connection";
 
 function OnlinePrivacyNotice() {
   return (
@@ -52,18 +54,32 @@ export function LanJoin() {
     </div>
   );
 }
-function JoinForm() {
-  const [address, setAddress] = useState("");
-  const [submitted, setSubmitted] = useState("");
+function JoinForm({
+  target = "",
+  roomId,
+  onConnected,
+}: {
+  target?: string;
+  roomId?: string;
+  onConnected?: () => void;
+}) {
+  const [address, setAddress] = useState(target);
+  const [submitted, setSubmitted] = useState(target);
   const id = useId();
   const navigate = useNavigate();
   const client = useQueryClient();
   const join = useQuery({
-    queryKey: ["lan-join", submitted],
-    queryFn: ({ signal }) =>
-      /^\d{6}$/.test(submitted)
-        ? desktopRpc.lan.onlineJoin({ code: submitted }, { signal })
-        : desktopRpc.lan.join({ address: submitted }, { signal }),
+    queryKey: ["lan-join", submitted, roomId],
+    queryFn: async ({ signal }) => {
+      const result = /^\d{6}$/.test(submitted)
+        ? await desktopRpc.lan.onlineJoin({ code: submitted, expectedRoomId: roomId }, { signal })
+        : await desktopRpc.lan.join({ address: submitted, expectedRoomId: roomId }, { signal });
+      if (roomId && result.roomId !== roomId) {
+        if (result.status === "approved") await desktopRpc.lan.stop({ roomId: result.roomId });
+        throw new Error("该连接信息属于另一个房间，请输入原房间的新房间码");
+      }
+      return result;
+    },
     enabled: Boolean(submitted),
     retry: false,
     staleTime: 0,
@@ -82,6 +98,9 @@ function JoinForm() {
       addresses: [],
       pending: [],
     });
+    void client.invalidateQueries({ queryKey: desktopOrpc.lan.recent.queryOptions().queryKey });
+    roomConnection(desktopRpc.game, roomId, localRoomModuleLoader).reconnect();
+    onConnected?.();
     void navigate({ to: "/game/$roomId", params: { roomId } });
   }, [join.data, client, navigate]);
   useEffect(() => {
@@ -121,7 +140,10 @@ function JoinForm() {
         </p>
       ) : null}
       {join.error ? (
-        <ConnectionError key={join.error.message} message={join.error.message} />
+        <div>
+          <p className="mb-2 text-sm">暂不可连接，请确认房主已开房；房间码变更后可在此更新。</p>
+          <ConnectionError key={join.error.message} message={join.error.message} />
+        </div>
       ) : null}
       {join.data?.status === "rejected" ? (
         <p role="alert" className="text-destructive text-sm">
@@ -131,7 +153,7 @@ function JoinForm() {
       {/^\d{6}$/.test(address.trim()) && !waiting ? <OnlinePrivacyNotice /> : null}
       <div className="flex gap-2">
         <Button type="submit" disabled={!address.trim() || waiting}>
-          申请加入
+          {roomId ? "重新连接" : "申请加入"}
         </Button>
         {waiting ? (
           <Button
@@ -200,11 +222,14 @@ export function LanRoom({ roomId }: { roomId: string }) {
   });
   if (status.data?.remote)
     return (
-      <p className="text-muted-foreground px-2 py-2 text-xs">
-        {status.data.connection === "disconnected"
-          ? "房间连接已断开，请离开后重新加入"
-          : "已加入房间 · 存档保存在房主电脑"}
-      </p>
+      <div className="text-muted-foreground px-2 py-2 text-xs">
+        <p>
+          {status.data.connection === "disconnected"
+            ? "房间连接已断开"
+            : "已加入房间 · 存档保存在房主电脑"}
+        </p>
+        {status.data.connection === "disconnected" ? <ReconnectRoom roomId={roomId} /> : null}
+      </div>
     );
   const pending = status.data?.pending ?? [];
   const online = status.data?.online;
@@ -411,6 +436,106 @@ export function LanRoom({ roomId }: { roomId: string }) {
                 </Button>
               ) : null}
             </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+export function RecentJoinedRooms() {
+  const recent = useQuery(desktopOrpc.lan.recent.queryOptions());
+  const [selected, setSelected] = useState<{ roomId: string; name: string; target: string }>();
+  const forget = useMutation({
+    mutationFn: (roomId: string) => desktopRpc.lan.forgetRecent({ roomId }),
+    onSuccess: () => recent.refetch(),
+  });
+  if (!recent.data?.length && !recent.error) return null;
+  return (
+    <section aria-label="加入过的房间" className="mb-8">
+      <h2 className="mb-3 text-[15px] font-semibold">加入过的房间</h2>
+      {recent.error ? (
+        <p role="alert">
+          {recent.error.message}
+          <button onClick={() => void recent.refetch()}>重试</button>
+        </p>
+      ) : null}
+      {forget.error ? (
+        <p role="alert" className="text-destructive text-sm">
+          {forget.error.message}
+        </p>
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {recent.data?.map((room) => (
+          <div key={room.roomId} className="border-border bg-card rounded-xl border">
+            <button
+              onClick={() => setSelected(room)}
+              className="hover:bg-accent w-full rounded-xl p-4 text-left"
+            >
+              <span className="block truncate text-sm font-medium">{room.name}</span>
+              <span className="text-muted-foreground mt-1 block text-xs">
+                上次加入 {new Date(room.joinedAt).toLocaleDateString()} · 点击重连
+              </span>
+            </button>
+            <button
+              className="text-muted-foreground hover:text-foreground mx-4 mb-3 text-xs"
+              disabled={forget.isPending}
+              onClick={() => forget.mutate(room.roomId)}
+              aria-label={`移除「${room.name}」的本机记录`}
+            >
+              移除记录
+            </button>
+          </div>
+        ))}
+      </div>
+      <Dialog
+        open={Boolean(selected)}
+        onOpenChange={(open) => {
+          if (!open) setSelected(undefined);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selected?.name}</DialogTitle>
+            <DialogDescription>
+              连接上次加入的房间，连接信息失效时可输入新的房间码或内网地址。
+            </DialogDescription>
+          </DialogHeader>
+          {selected ? (
+            <JoinForm key={selected.roomId} target={selected.target} roomId={selected.roomId} />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+export function ReconnectRoom({ roomId }: { roomId: string }) {
+  const [open, setOpen] = useState(false);
+  const recent = useQuery({ ...desktopOrpc.lan.recent.queryOptions(), enabled: open });
+  const record = recent.data?.find((item) => item.roomId === roomId);
+  return (
+    <>
+      <Button variant="outline" className="mt-2" onClick={() => setOpen(true)}>
+        重新连接
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重新连接房间</DialogTitle>
+            <DialogDescription>
+              使用上次的连接信息重连；房间码或地址已变更时，可以直接更新。
+            </DialogDescription>
+          </DialogHeader>
+          {recent.isPending ? (
+            <p role="status">正在读取连接记录…</p>
+          ) : recent.error ? (
+            <p role="alert">
+              {recent.error.message}
+              <button onClick={() => void recent.refetch()}>重试</button>
+            </p>
+          ) : open ? (
+            <JoinForm target={record?.target} roomId={roomId} onConnected={() => setOpen(false)} />
           ) : null}
         </DialogContent>
       </Dialog>

@@ -5,10 +5,10 @@ import { ORPCError } from "@orpc/server";
 import type { ChatMessage, Player } from "../../../shared/game";
 import type { ChatActivitySnapshot, RoomBaseline, RoomReplica } from "../../../shared/room-state";
 import type { RoomProjection } from "../../../shared/room-state";
-import { readAdventureState } from "../../sessions/adventure-state";
+import { updateAdventureState, readAdventureState } from "../../sessions/adventure-state";
 import { stateRevision } from "../../sessions/game-state";
 import { launchState } from "../../sessions/launch-store";
-import { roomGeneration } from "../../sessions/room-changes";
+import { notifyRoomChanged, roomGeneration } from "../../sessions/room-changes";
 import { readRoomFileSync } from "../../sessions/room-file";
 import { gameDirectoryForDatabase, roomDirectoryForDatabase } from "../../sessions/session-paths";
 import { isSessionActive } from "../../sessions/session-store";
@@ -139,6 +139,7 @@ export class ChatSync {
                 JSON.stringify({
                   startId: selection.launch.state?.startId,
                   party: selection.party,
+                  online: this.context.activity.players(state),
                   reservations: Object.entries(selection.launch.players).flatMap(
                     ([id, progress]) =>
                       progress.characterId && !progress.confirmed
@@ -177,7 +178,15 @@ export class ChatSync {
         data: { reason: "BASELINE_MISMATCH" },
       });
     if (isSessionActive(state.db)) await this.context.launch.syncLaunch(input.roomId, player);
+    this.context.store.transaction(state, () =>
+      updateAdventureState(state.db, (adventure) => {
+        const member = adventure.party.members.find((item) => item.id === player.id);
+        if (member) member.nickname = player.nickname;
+        else adventure.party.members.push({ ...player, relay: false });
+      }),
+    );
     const releaseViewer = this.context.activity.retainPlayer(state, player);
+    notifyRoomChanged(roomDirectoryForDatabase(state.db));
     const delivery = new RoomDeliveryWindow();
     this.deliveries.set(delivery.id, {
       roomId: input.roomId,
@@ -202,7 +211,10 @@ export class ChatSync {
     } finally {
       delivery.close();
       this.deliveries.delete(delivery.id);
-      if (releaseViewer()) this.projection(state).playerProjections.delete(player.id);
+      if (releaseViewer()) {
+        this.projection(state).playerProjections.delete(player.id);
+        notifyRoomChanged(roomDirectoryForDatabase(state.db));
+      }
     }
   }
 

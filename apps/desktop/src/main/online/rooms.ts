@@ -322,7 +322,7 @@ export class OnlineRooms {
       if (this.joining?.promise === promise) this.joining = undefined;
     }
   }
-  async join(code: string, signal?: AbortSignal) {
+  async join(code: string, signal?: AbortSignal, expectedRoomId?: string) {
     if (!/^\d{6}$/.test(code)) throw Error("请输入六位房间码");
     signal?.throwIfAborted();
     const cancelled = () => this.cancelJoin(code);
@@ -336,6 +336,10 @@ export class OnlineRooms {
     signal?.throwIfAborted();
     if (this.attempt?.target === code) this.attempt.progress.stage = "authenticating";
     const challenge = challengeSchema.parse(await guest.client.challenge(undefined, { signal }));
+    if (expectedRoomId && challenge.roomId !== expectedRoomId) {
+      this.cancelJoin(code);
+      throw new Error("房间码属于另一个房间，请输入原房间的新房间码");
+    }
     const { context, proof } = await this.rooms.joinIdentity(
       challenge,
       guest.peer.identityBinding(),
@@ -372,6 +376,7 @@ export class OnlineRooms {
       this.rooms.attachRemote(reply.roomId, remote);
       if (guest.peer.isClosed) this.rooms.markDisconnected(reply.roomId, remote);
     }
+    await this.rooms.remember(reply.roomId, code);
     return reply;
   }
   cancelJoin(code?: string) {

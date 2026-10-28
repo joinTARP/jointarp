@@ -229,7 +229,10 @@ export function RoomCompanionSettings({ roomId }: { roomId: string }) {
   });
   const [picking, setPicking] = useState(false);
   const settings = query.data;
-  const assigned = settings?.seats.filter((seat) => seat.companion) ?? [];
+  const assigned =
+    settings?.seats.filter(
+      (seat) => seat.companion && !settings.members.some((member) => member.id === seat.id),
+    ) ?? [];
   const pending = settings?.seats.filter((seat) => !seat.companion) ?? [];
   const held = pending.filter((seat) => seat.reservedCharacterId);
   const blank = pending.find((seat) => !seat.reservedCharacterId);

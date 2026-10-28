@@ -17,12 +17,19 @@ import { chatField, type SessionDatabase } from "../storage/session-database";
 export { moduleCompanionPrompt } from "../sessions/companion-selection";
 
 export function readCompanions(db: SessionDatabase): Companion[] {
-  const seats = readAdventureState(db).party.companions.filter((seat) => seat.status === "active");
+  const party = readAdventureState(db).party;
+  const seats = party.companions.filter((seat) => seat.status === "active");
   if (!seats.length) return [];
   const characters = readCharacters(db);
   return seats.map((seat) => {
     const character = characters.find((item) => item.id === seat.characterId);
-    const personality = character && moduleCompanionPrompt(db, character);
+    const relay = party.members.some((member) => member.id === seat.id && member.relay);
+    const personality =
+      character &&
+      (moduleCompanionPrompt(db, character) ??
+        (relay
+          ? `你正在临时接力扮演玩家角色「${character.name}」。依据角色资料和此前公开交流延续其性格、目标与行动；不替离线玩家作出不可逆的重大决定。\n${character.description ?? ""}\n${character.body ?? ""}`
+          : undefined));
     if (!personality) throw new Error("队友角色缺少模组预设提示词");
     return companionSchema.parse({
       id: seat.id,
@@ -57,7 +64,11 @@ export async function companionCharacters(db: SessionDatabase, requestedIds?: re
         controllerId: character.playerId,
         reservedBy: selectionOwner(db, character.id),
         playable: isPlayableCharacter(db, character),
-        aiConfigured: Boolean(moduleCompanionPrompt(db, character)),
+        aiConfigured:
+          Boolean(moduleCompanionPrompt(db, character)) ||
+          readAdventureState(db).party.members.some(
+            (member) => member.id === character.playerId && member.relay,
+          ),
         name: document.title,
         description: document.description ?? "",
         body: document.body ?? "",
@@ -95,6 +106,7 @@ export async function publicMentionTargets(
     const message = messageSchema.parse(JSON.parse(row.data));
     players.set(message.senderId, { id: message.senderId, nickname: message.nickname });
   }
+  for (const member of readAdventureState(db).party.members) players.set(member.id, member);
   for (const player of online) players.set(player.id, player);
   const companions = readCompanions(db);
   const companionIds = new Set(companions.map((companion) => companion.id));
@@ -107,7 +119,7 @@ export async function publicMentionTargets(
     if (!companionIds.has(character.playerId!) && !players.has(character.playerId!))
       players.set(character.playerId!, { id: character.playerId!, nickname: "玩家" });
   const targets = [
-    ...players.values(),
+    ...[...players.values()].filter((player) => !companionIds.has(player.id)),
     ...companions.map((companion) => ({
       id: companion.id,
       nickname: views.find((view) => view.id === companion.characterId)?.name ?? "AI 队友",

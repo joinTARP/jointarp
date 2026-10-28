@@ -3,7 +3,7 @@ import type { GameSession, SessionModule } from "@jointarp/core/shared/session";
 import type { Character } from "@jointarp/module/character";
 import { documentIdentity } from "@jointarp/module/document-path";
 import type { SpeechPart } from "@shared/speech-text";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookOpen } from "lucide-react";
 import {
   useCallback,
@@ -150,6 +150,13 @@ function RoomChat({
   const profile = usePlayerProfile(reportError);
   const { player } = profile;
   const party = useRoomCompanions(roomId);
+  const relayActive = Boolean(
+    party.data?.members.find((member) => member.id === player?.id)?.relay,
+  );
+  const reclaim = useMutation({
+    mutationFn: () => desktopRpc.sessions.companion.reclaim({ roomId }),
+    onSuccess: () => party.refetch(),
+  });
   const openCharacter =
     characters.find((item) => item.id === openCharacterId) ??
     party.data?.characters.find((item) => item.id === openCharacterId)?.card;
@@ -227,6 +234,7 @@ function RoomChat({
     player,
     ready,
     hostReady,
+    relayActive,
     mentions,
     log,
     onOpenRoomSettings,
@@ -360,6 +368,15 @@ function RoomChat({
               mentions={mentions}
               dockRef={dockRef}
               showReasoning={showReasoning}
+              relay={
+                relayActive
+                  ? {
+                      pending: reclaim.isPending,
+                      error: reclaim.error?.message,
+                      reclaim: () => reclaim.mutate(),
+                    }
+                  : undefined
+              }
             />
           </div>
         )}

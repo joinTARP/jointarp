@@ -55,6 +55,10 @@ export class ChatCompanions {
       };
     });
     return {
+      members: readAdventureState(state.db).party.members.map((member) => ({
+        ...member,
+        online: this.context.activity.players(state).some((player) => player.id === member.id),
+      })),
       seats,
       characters: (await companionCharacters(state.db))
         .filter(
@@ -121,6 +125,71 @@ export class ChatCompanions {
     }
   }
 
+  async setRelay(roomId: string, playerId: string, enabled: boolean) {
+    const state = await this.context.state(roomId);
+    const finish = enabled
+      ? this.context.activity.beginConfiguration(state)
+      : this.context.activity.beginHandoff(state);
+    try {
+      // 后续队友行动通过回应队列启动；交接锁使队列等到控制权切换完成。
+      if (!enabled) await this.context.activity.running(state)?.done;
+      this.context.store.transaction(state, () => {
+        const adventure = readAdventureState(state.db);
+        const member = adventure.party.members.find((item) => item.id === playerId);
+        if (!member) throw new Error("成员不存在");
+        if (member.relay === enabled) return;
+        if (
+          enabled &&
+          this.context.activity.players(state).some((player) => player.id === playerId)
+        )
+          throw new Error("成员在线时不能开启 AI 接力");
+        const character = readCharacters(state.db).find(
+          (item) => item.playerId === playerId && !item.retired,
+        );
+        if (enabled && !character) throw new Error("成员尚未选择角色");
+        const defaults = readRoomSettings(roomDirectoryForDatabase(state.db)).companion;
+        updateAdventureState(state.db, (current) => {
+          current.party.members.find((item) => item.id === playerId)!.relay = enabled;
+          current.party.companions = current.party.companions.filter(
+            (seat) => seat.id !== playerId,
+          );
+          if (enabled)
+            current.party.companions.push({
+              id: playerId,
+              status: "active",
+              characterId: character!.id,
+              joinedSequence: 0,
+              model: defaults.model,
+              initiative: structuredClone(defaults.initiative),
+              documentAccess: defaults.documentAccess,
+              voice: null,
+              defaultVoice: defaults.voice,
+            });
+        });
+        markStateChanged(state.db);
+      });
+    } finally {
+      finish();
+    }
+  }
+
+  async removeMember(roomId: string, playerId: string) {
+    return this.configureCompanions(roomId, (state) =>
+      this.context.store.transaction(state, () => {
+        updateAdventureState(state.db, (current) => {
+          current.party.members = current.party.members.filter((member) => member.id !== playerId);
+          current.party.companions = current.party.companions.filter(
+            (seat) => seat.id !== playerId,
+          );
+          for (const character of current.party.characters)
+            if (character.playerId === playerId) character.playerId = null;
+          delete current.launch.players[playerId];
+        });
+        markStateChanged(state.db);
+      }),
+    );
+  }
+
   async selectCompanion(roomId: string, characterId: string, seatId?: string) {
     return this.configureCompanions(roomId, (state) =>
       this.context.store.transaction(state, () => {
@@ -157,6 +226,8 @@ export class ChatCompanions {
     return this.configureCompanions(roomId, async (state) => {
       const seat = readAdventureState(state.db).party.companions.find((seat) => seat.id === id);
       if (!seat) throw new Error("队友席位不存在，请刷新");
+      if (readAdventureState(state.db).party.members.some((member) => member.id === id))
+        throw new Error("请通过成员的接力入口操作");
       const before = seat.status === "active" ? seat : undefined;
       const value = input ? companionInputSchema.parse(input) : null;
       if (value) {

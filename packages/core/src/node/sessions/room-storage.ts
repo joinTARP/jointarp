@@ -47,6 +47,12 @@ const companionSeatSchema = z.discriminatedUnion("status", [
 ]);
 export type CompanionSeat = z.infer<typeof companionSeatSchema>;
 
+export const roomMemberSchema = z.object({
+  id: idSchema,
+  nickname: z.string(),
+  relay: z.boolean().default(false),
+});
+
 const adventureSchema = z.strictObject({
   contextSubscriptions: z.record(idSchema, contextSubscriptionListSchema).default({}),
   room: gameRoomSchema,
@@ -56,6 +62,7 @@ const adventureSchema = z.strictObject({
     players: z.record(idSchema, launchProgressSchema),
   }),
   party: z.strictObject({
+    members: z.array(roomMemberSchema).default([]),
     characters: z.array(storedCharacterSchema),
     companions: z.array(companionSeatSchema),
   }),
@@ -76,7 +83,7 @@ export function initializeAdventure(directory: string, room: GameRoom): void {
     room,
     notes: {},
     launch: { state: null, players: {} },
-    party: { characters: [], companions: [] },
+    party: { members: [], characters: [], companions: [] },
   });
 }
 

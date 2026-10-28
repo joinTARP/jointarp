@@ -157,7 +157,11 @@ describe("游戏房存档", () => {
       assert.deepEqual(stored.contextSubscriptions, {});
       const selection = stored;
       assert.deepEqual(Object.keys(selection.launch).sort(), ["players", "state"]);
-      assert.deepEqual(Object.keys(selection.party).sort(), ["characters", "companions"]);
+      assert.deepEqual(Object.keys(selection.party).sort(), [
+        "characters",
+        "companions",
+        "members",
+      ]);
       assert.equal(readRoomSettings(directory).ai, null);
       assert.ok(Array.isArray(selection.party.characters));
       assert.equal(room.moduleName, "测试模组");

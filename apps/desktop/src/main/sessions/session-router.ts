@@ -83,6 +83,18 @@ export const sessionRouter = {
       ),
   },
   companion: {
+    relay: procedure
+      .input(z.object({ roomId: z.string().uuid(), playerId: identityIdSchema }))
+      .handler(({ context, input }) => {
+        if (!context.isHost) throw new Error("请由房主开启 AI 接力");
+        return context.chat.setMemberRelay(input.roomId, input.playerId, true);
+      }),
+    reclaim: procedure
+      .input(z.object({ roomId: z.string().uuid() }))
+      .handler(({ context, input }) =>
+        context.chat.setMemberRelay(input.roomId, context.player.id, false),
+      ),
+
     select: procedure
       .input(
         z.object({

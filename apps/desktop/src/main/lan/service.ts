@@ -46,6 +46,7 @@ const allowedSessions = new Set([
   "sessions.notes.save",
   "sessions.ai.get",
   "sessions.companion.get",
+  "sessions.companion.reclaim",
 ]);
 export function assertLanAccess(path: readonly string[], input: unknown, roomId: string) {
   const name = path.join(".");
@@ -216,11 +217,12 @@ export class LanService {
           player,
           proof,
           token: token(),
-          status: "pending",
+          status: saved ? "approved" : "pending",
           expires: Date.now() + 120_000,
         };
         members.set(member.token, member);
       }
+      if (member.status === "approved") await context.chat.registerMember(roomId, player);
       return { status: member.status, roomId, token: member.token };
     };
     const challenges = new Map<string, number>();
@@ -359,11 +361,71 @@ export class LanService {
     }
     if (!hosted || this.hosted !== hosted || hosted.members.get(id) !== member)
       throw Error("申请已失效");
+    if (approve) await hosted.context.chat.registerMember(roomId, member.player);
     member.status = approve ? "approved" : "rejected";
     member.onDecision?.(approve);
     return this.status(roomId);
   }
-  async join(address: string, signal?: AbortSignal) {
+  async recent() {
+    const context = await this.context();
+    return this.recentFile(context.sessionsRoot).read();
+  }
+  async forgetRecent(roomId: string) {
+    const context = await this.context();
+    await this.recentFile(context.sessionsRoot).update((records) =>
+      records.filter((record) => record.roomId !== roomId),
+    );
+  }
+  private recentFile(root: string) {
+    return structuredFile(join(root, "recent-joined.json"), {
+      validate: z.array(
+        z.object({
+          roomId: z.string().uuid(),
+          name: z.string(),
+          target: z.string(),
+          joinedAt: z.string(),
+        }),
+      ).parse,
+      missing: () => [],
+      fileMode: 0o600,
+    });
+  }
+  async remember(roomId: string, target: string) {
+    const context = await this.context();
+    const file = this.recentFile(context.sessionsRoot);
+    await file.update((records) => {
+      const before = records.find((item) => item.roomId === roomId);
+      return [
+        { roomId, target, name: before?.name ?? "加入的冒险", joinedAt: new Date().toISOString() },
+        ...records.filter((item) => item.roomId !== roomId),
+      ];
+    });
+  }
+  async removeMember(roomId: string, playerId: string) {
+    const context = await this.context();
+    if (this.remotes.has(roomId) || playerId === context.player.id)
+      throw new Error("不能移除此成员");
+    await context.chat.removeMember(roomId, playerId);
+    const proofs = structuredFile(join(context.sessionsRoot, roomId, "lan-members.json"), {
+      validate: z.record(z.string(), secretSchema).parse,
+      missing: () => ({}),
+      fileMode: 0o600,
+    });
+    await proofs.update((saved) => {
+      delete saved[playerId];
+      return saved;
+    });
+    const hosted = this.hosted?.roomId === roomId ? this.hosted : undefined;
+    for (const [id, member] of hosted?.members ?? []) {
+      if (member.player.id !== playerId) continue;
+      member.status = "rejected";
+      hosted!.members.delete(id);
+      for (const socket of hosted!.sockets)
+        if (socket.data.member === member) socket.close(1008, "已被移出房间");
+      hosted!.nativeOwners.get(id)?.close();
+    }
+  }
+  async join(address: string, signal?: AbortSignal, expectedRoomId?: string) {
     const base = lanAddress(address);
     const context = await this.context();
     const challengeResponse = await fetch(`${base}/challenge`, {
@@ -374,6 +436,8 @@ export class LanService {
     });
     if (!challengeResponse.ok) throw Error("无法获取房间身份挑战");
     const challenge = challengeSchema.parse(await challengeResponse.json());
+    if (expectedRoomId && challenge.roomId !== expectedRoomId)
+      throw new Error("连接信息属于另一个房间，请输入原房间的新地址");
     const proof = await this.identity.prove(context.player, challenge, "lan");
     const response = await fetch(`${base}/join`, {
       method: "POST",
@@ -396,8 +460,7 @@ export class LanService {
     if (existsSync(join(context.sessionsRoot, reply.roomId)))
       throw new Error("本机已有同名存档，不能作为访客加入");
     const existing = this.remotes.get(reply.roomId);
-    if (existing && (existing.base !== base || existing.token !== reply.token))
-      this.disconnect(reply.roomId);
+    if (existing) this.disconnect(reply.roomId, false);
     if (!this.remotes.has(reply.roomId)) {
       const remote: Remote = {
         base,
@@ -422,6 +485,7 @@ export class LanService {
       };
       this.remotes.set(reply.roomId, remote);
     }
+    await this.remember(reply.roomId, address.trim());
     return { status: reply.status, roomId: reply.roomId };
   }
   async joinIdentity(challenge: IdentityChallenge, binding: string) {
@@ -452,7 +516,7 @@ export class LanService {
     const remote = this.remotes.get(roomId);
     if (!remote) throw new Error("尚未连接房间");
     const cancellation = AbortSignal.any([remote.controller.signal, ...(signal ? [signal] : [])]);
-    return this.modules.sync(
+    const resources = await this.modules.sync(
       roomId,
       (path, headers) =>
         this.requestRemote(remote, path, {
@@ -466,6 +530,13 @@ export class LanService {
         }),
       cancellation,
     );
+    const context = await this.context();
+    await this.recentFile(context.sessionsRoot).update((records) =>
+      records.map((record) =>
+        record.roomId === roomId ? { ...record, name: resources.room.name } : record,
+      ),
+    );
+    return resources;
   }
   async media(source: string, method: string): Promise<Response | undefined> {
     const url = new URL(source);
@@ -498,7 +569,7 @@ export class LanService {
       return new Response(null, { status: 502 });
     }
   }
-  private disconnect(roomId: string) {
+  private disconnect(roomId: string, leave = true) {
     const remote = this.remotes.get(roomId);
     if (!remote) return;
     remote.closed = true;
@@ -506,7 +577,7 @@ export class LanService {
     remote.socket?.close();
     remote.close?.();
     this.remotes.delete(roomId);
-    if (!remote.close)
+    if (leave && !remote.close)
       void fetch(`${remote.base}/leave`, {
         method: "DELETE",
         redirect: "error",

@@ -1,10 +1,22 @@
+import { Menu } from "@base-ui/react/menu";
 import type { Player } from "@jointarp/core/shared/game";
 import type { GameSession } from "@jointarp/core/shared/session";
 import type { Character } from "@jointarp/module/character";
-import { UserRound } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { MoreHorizontal, UserRound } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "../../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { Tooltip } from "../../components/ui/tooltip";
+import { desktopRpc } from "../../desktop-rpc";
 import { useDocumentPortrait } from "../modules/document-image";
 import { CharacterAvatarMenu } from "./CharacterAvatarMenu";
 import { CharacterCardDialog } from "./CharacterCardDialog";
@@ -62,7 +74,9 @@ export function GameParty({
   characters,
   player,
   onMention,
+  isHost = false,
 }: {
+  isHost?: boolean;
   roomId: string;
   session: GameSession;
   characters: readonly Character[];
@@ -70,6 +84,16 @@ export function GameParty({
   onMention?: (id: string) => void;
 }) {
   const party = useRoomCompanions(roomId);
+  const [removing, setRemoving] = useState<{ id: string; nickname: string } | null>(null);
+  const action = useMutation({
+    mutationFn: async ({ id, kind }: { id: string; kind: "relay" | "reclaim" | "remove" }) => {
+      if (kind === "relay") await desktopRpc.sessions.companion.relay({ roomId, playerId: id });
+      if (kind === "reclaim") await desktopRpc.sessions.companion.reclaim({ roomId });
+      if (kind === "remove") await desktopRpc.lan.removeMember({ roomId, playerId: id });
+      await party.refetch();
+      if (kind === "remove") setRemoving(null);
+    },
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const members = new Map(
     characters
@@ -83,20 +107,95 @@ export function GameParty({
     )?.card;
     if (character) members.set(character.id, character);
   }
+  const players = party.data?.members ?? [];
+  const unbound = players.filter(
+    (member) => ![...members.values()].some((character) => character.playerId === member.id),
+  );
+  const controls = (id: string, hasCharacter: boolean) => {
+    const member = players.find((item) => item.id === id);
+    if (!member) return null;
+    return (
+      <div className="flex min-h-6 flex-wrap items-center gap-2 px-2 pb-2 text-xs">
+        <span className="text-muted-foreground">
+          {member.online ? "在线" : "离线"}
+          {member.relay ? " · AI 接力中" : ""}
+        </span>
+        {member.relay && id === player?.id ? (
+          <button
+            disabled={action.isPending}
+            onClick={() => action.mutate({ id, kind: "reclaim" })}
+          >
+            {action.isPending ? "等待当前行动结束…" : "接回角色"}
+          </button>
+        ) : null}
+        {isHost && id !== player?.id ? (
+          <Menu.Root>
+            <Menu.Trigger
+              aria-label={`管理成员“${member.nickname}”`}
+              disabled={action.isPending}
+              className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-ring ml-auto grid size-6 shrink-0 place-items-center rounded-md outline-none focus-visible:outline-1"
+            >
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Positioner
+                side="bottom"
+                align="end"
+                sideOffset={4}
+                className="z-50 outline-none"
+              >
+                <Menu.Popup className="border-border bg-popover text-popover-foreground min-w-40 rounded-lg border p-1 text-xs shadow-lg outline-none">
+                  {!member.online && !member.relay && hasCharacter ? (
+                    <Menu.Item
+                      onClick={() => action.mutate({ id, kind: "relay" })}
+                      className="data-highlighted:bg-muted flex cursor-default items-center rounded-md px-2.5 py-2 outline-none"
+                    >
+                      开启 AI 接力
+                    </Menu.Item>
+                  ) : null}
+                  <Menu.Item
+                    onClick={() => {
+                      action.reset();
+                      setRemoving({ id, nickname: member.nickname });
+                    }}
+                    className="text-destructive data-highlighted:bg-destructive/10 flex cursor-default items-center rounded-md px-2.5 py-2 outline-none"
+                  >
+                    移除成员
+                  </Menu.Item>
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
+        ) : null}
+      </div>
+    );
+  };
   const selected = selectedId ? members.get(selectedId) : undefined;
   return (
     <section aria-label="冒险小队" className="mb-3 flex min-w-0 flex-col">
       <div className="text-muted-foreground/65 flex shrink-0 items-center gap-2 px-2 pb-3 text-[11px] font-medium">
         <h2>冒险小队</h2>
-        <span className="text-muted-foreground/45 text-[10px] tabular-nums">{members.size}</span>
+        <span className="text-muted-foreground/45 text-[10px] tabular-nums">
+          {members.size + unbound.length}
+        </span>
       </div>
       <div>
         <ul className="space-y-0.5">
           {[...members.values()].map((character) => (
-            <li key={character.id}>
+            <li
+              key={character.id}
+              className={
+                players.some((member) => member.id === character.playerId && !member.online)
+                  ? "opacity-50 grayscale"
+                  : undefined
+              }
+            >
               <PartyMember
                 character={character}
-                nickname={player && character.playerId === player.id ? player.nickname : undefined}
+                nickname={
+                  players.find((member) => member.id === character.playerId)?.nickname ??
+                  (player && character.playerId === player.id ? player.nickname : undefined)
+                }
                 onMention={
                   onMention && character.playerId !== player?.id
                     ? (() => {
@@ -110,10 +209,27 @@ export function GameParty({
                 }
                 onClick={() => setSelectedId(character.id)}
               />
+              {character.playerId ? controls(character.playerId, true) : null}
+            </li>
+          ))}
+          {unbound.map((member) => (
+            <li key={member.id} className={member.online ? "" : "opacity-50 grayscale"}>
+              <div className="flex items-center gap-2.5 px-2 py-2">
+                <span className="bg-muted flex size-9 items-center justify-center rounded-full">
+                  <UserRound className="size-4" />
+                </span>
+                <span className="truncate text-[13px]">{member.nickname} · 未选角色</span>
+              </div>
+              {controls(member.id, false)}
             </li>
           ))}
         </ul>
-        {members.size === 0 ? (
+        {action.error ? (
+          <p role="alert" className="text-destructive px-2 text-xs">
+            {action.error.message}
+          </p>
+        ) : null}
+        {members.size + unbound.length === 0 ? (
           <p role="status" className="text-muted-foreground px-3 py-2 text-xs">
             {party.isPending ? "正在读取小队…" : "暂无入队角色"}
           </p>
@@ -128,6 +244,38 @@ export function GameParty({
           </button>
         ) : null}
       </div>
+      <Dialog
+        open={Boolean(removing)}
+        onOpenChange={(open) => {
+          if (!open && !action.isPending) setRemoving(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>移除成员“{removing?.nickname}”？</DialogTitle>
+            <DialogDescription>
+              该成员将离开小队并解除角色绑定，再次加入需要房主重新批准。
+            </DialogDescription>
+          </DialogHeader>
+          {action.error ? (
+            <p role="alert" className="text-destructive text-sm">
+              {action.error.message}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" disabled={action.isPending} onClick={() => setRemoving(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={action.isPending}
+              onClick={() => removing && action.mutate({ id: removing.id, kind: "remove" })}
+            >
+              {action.isPending ? "正在移除…" : "移除成员"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <CharacterCardDialog
         character={selected}
         session={session}

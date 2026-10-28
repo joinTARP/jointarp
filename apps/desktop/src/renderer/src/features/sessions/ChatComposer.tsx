@@ -48,6 +48,7 @@ export function ChatComposer({
   mentions,
   dockRef,
   showReasoning,
+  relay,
 }: {
   roomId: string;
   composer: ChatComposerController;
@@ -57,6 +58,7 @@ export function ChatComposer({
   mentions: readonly MentionCandidate[];
   dockRef(node: HTMLDivElement | null): (() => void) | undefined;
   showReasoning: boolean;
+  relay?: { pending: boolean; error?: string; reclaim(): void };
 }) {
   const { player } = profile;
   const {
@@ -119,6 +121,36 @@ export function ChatComposer({
     const messageId = activeMessage?.runId ?? composer.queuedMessage?.messageId;
     if (messageId) void actOnRun(messageId);
   }
+  if (relay)
+    return (
+      <div ref={dockRef} className={styles.composerDock}>
+        <div aria-hidden="true" className={styles.composerVeil} />
+        <div className="relative mx-auto w-full max-w-5xl px-4 pb-4 sm:px-6">
+          <div className={`${styles.composerSurface} space-y-2 rounded-2xl p-4`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p role="status" className="text-muted-foreground text-sm">
+                {relay.pending
+                  ? "等待当前 AI 行动结束后交还控制权…"
+                  : "AI 正在接力操控你的角色，接回后即可发言。"}
+              </p>
+              <Button type="button" size="sm" disabled={relay.pending} onClick={relay.reclaim}>
+                {relay.pending ? "正在接回…" : "接回角色"}
+              </Button>
+            </div>
+            {relay.error ? (
+              <p role="alert" className="text-destructive text-sm">
+                {relay.error}
+              </p>
+            ) : null}
+            {error ? (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
   return (
     <div ref={dockRef} className={styles.composerDock}>
       <div aria-hidden="true" className={styles.composerVeil} />

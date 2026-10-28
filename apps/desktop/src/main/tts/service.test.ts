@@ -314,6 +314,7 @@ test("模组声音按主持人、AI 队友角色路径与 NPC 文档路径 解�
     updateAdventure(dir, (current) => ({
       ...current,
       party: {
+        members: [],
         companions: [
           {
             id: "companion-id",
