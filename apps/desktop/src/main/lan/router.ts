@@ -20,6 +20,16 @@ function service(context: DesktopRpcContext) {
   return context.lan;
 }
 export const lanRouter = {
+  forgetRecent: procedure
+    .input(room)
+    .handler(({ context, input }) => service(context).forgetRecent(input.roomId)),
+  recent: procedure.handler(({ context }) => service(context).recent()),
+  removeMember: procedure
+    .input(room.extend({ playerId: z.string() }))
+    .handler(({ context, input }) => {
+      if (!context.isHost) throw new ORPCError("FORBIDDEN");
+      return service(context).removeMember(input.roomId, input.playerId);
+    }),
   onlineProgress: procedure
     .input(z.object({ target: z.string().min(1).max(80) }))
     .handler(({ context, input }) => service(context).online.progress(input.target)),
@@ -27,8 +37,12 @@ export const lanRouter = {
     .input(room)
     .handler(({ context, input }) => service(context).online.host(input.roomId)),
   onlineJoin: procedure
-    .input(z.object({ code: z.string().regex(/^\d{6}$/) }))
-    .handler(({ context, input, signal }) => service(context).online.join(input.code, signal)),
+    .input(
+      z.object({ code: z.string().regex(/^\d{6}$/), expectedRoomId: z.string().uuid().optional() }),
+    )
+    .handler(({ context, input, signal }) =>
+      service(context).online.join(input.code, signal, input.expectedRoomId),
+    ),
   cancelOnlineJoin: procedure
     .input(z.object({ code: z.string().regex(/^\d{6}$/) }))
     .handler(({ context, input }) => service(context).online.cancelJoin(input.code)),
@@ -38,8 +52,10 @@ export const lanRouter = {
   host: procedure.input(room).handler(({ context, input }) => service(context).host(input.roomId)),
   stop: procedure.input(room).handler(({ context, input }) => service(context).stop(input.roomId)),
   join: procedure
-    .input(z.object({ address: z.string().max(80) }))
-    .handler(({ context, input, signal }) => service(context).join(input.address, signal)),
+    .input(z.object({ address: z.string().max(80), expectedRoomId: z.string().uuid().optional() }))
+    .handler(({ context, input, signal }) =>
+      service(context).join(input.address, signal, input.expectedRoomId),
+    ),
   decide: procedure
     .input(room.extend({ id: z.string(), approve: z.boolean() }))
     .handler(({ context, input }) =>
