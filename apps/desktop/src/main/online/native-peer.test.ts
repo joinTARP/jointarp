@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 
+import { useFakeTimers, advanceTimersByTime } from "@jointarp/module/testing/async";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/message-port";
 import type { RouterClient } from "@orpc/server";
@@ -129,3 +130,24 @@ test("原生通道承载最大房间状态编码帧，分块重组不损坏内�
     player.close();
   }
 }, 10_000);
+
+test("握手超时保留诊断状态，错误不泄漏候选地址", async () => {
+  useFakeTimers();
+  const peer = new NativePeer({ initiator: false, iceServers: [], onSignal: () => {} });
+  try {
+    peer.receiveSignal({ kind: "candidate", candidate: "private-address", mid: "0" });
+    const error = peer.ready.catch((error: Error) => error);
+    advanceTimersByTime(30_000);
+    const failure = await error;
+    expect(failure).toBeInstanceOf(Error);
+    const message = (failure as Error).message;
+    expect(message).toContain("联机握手超时");
+    expect(message).toContain("候选发送/接收=0/1");
+    expect(message).toContain("描述发送/接收=0/0");
+    expect(message).toContain("通道=0/2");
+    expect(message).not.toContain("private-address");
+    await expect(peer.resourcesReady).rejects.toThrow("联机握手超时");
+  } finally {
+    peer.close();
+  }
+});
