@@ -9,6 +9,7 @@ import { parseMentionRefs } from "@jointarp/core/shared/mentions";
 import type { ChatActivitySnapshot } from "@jointarp/core/shared/room-state";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { mapUi, useMapUi } from "../maps/map-ui";
 import { errorMessage, type GameClient } from "./game-client";
 import {
   draftText,
@@ -71,8 +72,12 @@ export function useChatComposer({
   const [convertingMessageId, setConvertingMessageId] = useState<string | null>(null);
   const convertLock = useRef(false);
   const [failedSends, setFailedSends] = useState<SendInput[]>([]);
+  const plan = useMapUi(roomId).plan;
   const draftRetryPayload = failedSends.find(
-    (item) => item.text === currentText.trim() && item.chatOnly === chatOnly,
+    (item) =>
+      item.text === currentText.trim() &&
+      item.chatOnly === chatOnly &&
+      JSON.stringify(item.movement) === JSON.stringify(plan),
   );
   const retryingDraft = Boolean(draftRetryPayload);
   const [pendingRun, setPendingRun] = useState<string | null>(null);
@@ -91,7 +96,7 @@ export function useChatComposer({
   const busy = Boolean(activeMessage);
   const canSteer =
     steering.enabled && busy && !activeMessage?.companionId && !activeMessage?.chatOnly;
-  const steeringMode = canSteer && !effectiveChatOnly && !retryingDraft;
+  const steeringMode = canSteer && !effectiveChatOnly && !retryingDraft && !plan;
   useEffect(() => {
     const request = continueRequest.current;
     if (request && ![...request.pendingIds].some((id) => pendingIds.has(id)))
@@ -150,13 +155,18 @@ export function useChatComposer({
   async function send(retry?: SendInput) {
     if (sendingLock.current || continuing || modeChanging || !player || !ready) return;
     const text = (retry?.text ?? currentText).trim();
-    if (!text) return;
+    const movement = retry ? retry.movement : plan;
+    if (!text && !movement) return;
     const refs = parseMentionRefs(text);
     const only = retry?.chatOnly ?? chatOnly;
     const submittedDraft = currentText === text && chatOnly === only ? draft : undefined;
     const directed = refs.some((part) => mentions.some((target) => target.id === part.id));
     const effectiveOnly = only || directed;
     const retryPayload = retry ?? draftRetryPayload;
+    if (movement && effectiveOnly) {
+      reportError("移动意图只能随行动提交，请切换到「行动」或移除移动。");
+      return;
+    }
     if (!effectiveOnly && pendingInput) {
       reportError("有尚未送达主持的行动，请房主先重试或放弃；期间可以仅聊天。");
       return;
@@ -167,7 +177,12 @@ export function useChatComposer({
       );
       return;
     }
-    if (!retryPayload && !effectiveOnly && (canSteer || steeringRequest.current?.text === text)) {
+    if (
+      !retryPayload &&
+      !effectiveOnly &&
+      !movement &&
+      (canSteer || steeringRequest.current?.text === text)
+    ) {
       sendingLock.current = true;
       setSending(true);
       reportError("");
@@ -236,12 +251,17 @@ export function useChatComposer({
         text,
         chatOnly: only,
         clientMessageId: crypto.randomUUID(),
+        ...(movement ? { movement } : {}),
       };
       if (submittedDraft !== undefined)
         setDraft((current) => (current === submittedDraft ? [] : current));
       const sent = await client.chat.send(payload, { signal });
       if (signal?.aborted) return;
       actions.acceptMessage(sent);
+      if (payload.movement)
+        mapUi.update(roomId, (state) =>
+          state.plan === payload!.movement ? { ...state, plan: undefined } : state,
+        );
       const sentId = payload.clientMessageId;
       setFailedSends((current) => current.filter((item) => item.clientMessageId !== sentId));
       scrollToBottom();
@@ -438,6 +458,7 @@ export function useChatComposer({
     submitSteering,
     draft,
     draftText: visibleDraft,
+    plan,
     setDraft,
     mentionField,
     quickMention,
@@ -486,7 +507,7 @@ export function useChatComposer({
       modeChanging ||
       !player ||
       !ready ||
-      !visibleDraft.trim() ||
+      (!visibleDraft.trim() && !plan) ||
       (!effectiveChatOnly && Boolean(pendingInput)) ||
       (!retryingDraft && !effectiveChatOnly && busy && !activeMessage?.companionId && !canSteer),
   };

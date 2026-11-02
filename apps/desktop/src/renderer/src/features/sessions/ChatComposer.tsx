@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ArrowUp, CornerUpLeft, Play, Square, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, CornerUpLeft, Footprints, Play, Square, X } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import { Button } from "../../components/ui/button";
@@ -10,6 +10,8 @@ import {
   SelectLabel,
   SelectTrigger,
 } from "../../components/ui/select";
+import { distanceText, summarizePlan, useRoomMaps } from "../maps/map-model";
+import { mapUi } from "../maps/map-ui";
 import { SpeechControls } from "../tts/SpeechControls";
 import type { useSpeech } from "../tts/use-speech";
 import type { MentionCandidate } from "./mention";
@@ -85,6 +87,10 @@ export function ChatComposer({
     submissionDisabled,
     sendDisabled,
   } = composer;
+  const maps = useRoomMaps(roomId);
+  const plan = composer.plan;
+  const planMap = maps.maps.find((item) => item.resource.id === plan?.map);
+  const planSummary = plan && planMap ? summarizePlan(planMap, plan) : undefined;
   function focusComposer() {
     mentionField.current?.focus();
   }
@@ -285,7 +291,7 @@ export function ChatComposer({
               className="border-border mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
             >
               <p className="text-muted-foreground min-w-0 truncate text-xs">
-                发送未确认：{failedSend.text}
+                发送未确认：{failedSend.text || "移动意图"}
               </p>
               <Button
                 variant="outline"
@@ -356,6 +362,46 @@ export function ChatComposer({
                   <span>{chatOnly ? "聊天" : "行动"}</span>
                   <ArrowLeftRight aria-hidden="true" className="size-3 opacity-60" />
                 </Button>
+                {maps.own ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground aria-pressed:text-foreground h-8 gap-1.5 rounded-md px-2 text-xs"
+                    aria-pressed={Boolean(plan)}
+                    disabled={composer.effectiveChatOnly}
+                    tooltip={
+                      composer.effectiveChatOnly
+                        ? "移动意图只能随行动提交"
+                        : plan
+                          ? "编辑移动路线"
+                          : "在地图上规划本人角色的移动，随行动一起提交，由主持裁定结果"
+                    }
+                    onMouseDown={keepComposerFocus}
+                    onClick={() => mapUi.open(roomId, { mapId: maps.own!.map, planning: true })}
+                  >
+                    <Footprints aria-hidden="true" className="size-3.5" />
+                    <span>
+                      {plan && planSummary && planMap
+                        ? `移动 · ${distanceText(planSummary.length, planMap.resource.grid.unit, planSummary.explore)}`
+                        : "移动"}
+                    </span>
+                  </Button>
+                ) : null}
+                {plan ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground size-7"
+                    aria-label="移除移动意图"
+                    tooltip="移除移动意图"
+                    onMouseDown={keepComposerFocus}
+                    onClick={() => mapUi.setPlan(roomId, undefined)}
+                  >
+                    <X aria-hidden="true" className="size-3.5" />
+                  </Button>
+                ) : null}
                 {composer.automaticChat ? (
                   <span role="status" className="text-muted-foreground text-[11px]">
                     由 @ 自动转为聊天

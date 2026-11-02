@@ -30,7 +30,7 @@ const characterCache = new WeakMap<
   { document?: ModuleDocument; character: Character }
 >();
 const documentsCache = new WeakMap<RoomReplica["entities"], ModuleDocument[]>();
-function roomDocuments(replica: RoomReplica): ModuleDocument[] {
+export function roomDocuments(replica: RoomReplica): ModuleDocument[] {
   const cached = documentsCache.get(replica.entities);
   if (cached) return cached;
   const documents = Object.values(replica.entities).map((entity) => {
