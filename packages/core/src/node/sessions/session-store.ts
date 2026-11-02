@@ -36,6 +36,7 @@ import {
   forgetFrozenModule,
   frozenModule,
   loadFrozenModule,
+  loadValidatedMaps,
   setFrozenModule,
 } from "./frozen-module";
 import { resolveGameDocumentPath } from "./game-document-path";
@@ -166,6 +167,7 @@ export async function createSession(
     if (!documentTypes.length || !documents.length) throw new Error("模组没有可用于开局的文档");
     const invalid = documents.find((document) => !document.valid);
     if (invalid) throw new Error(`请先修复模组文档 ${invalid.path}：${invalid.error}`);
+    const maps = await loadValidatedMaps(moduleCopy, documents);
     const room: GameRoom = {
       id,
       name,
@@ -182,7 +184,7 @@ export async function createSession(
       await db.migrate();
       associateSessionDirectory(db, staging);
       retainRoomResources(db, staging);
-      setFrozenModule(db, { types: documentTypes, documents, launch });
+      setFrozenModule(db, { types: documentTypes, documents, maps, launch });
       db.sqlite.exec("BEGIN");
       beginAdventureEdit(db);
       initializeCharacters(db);

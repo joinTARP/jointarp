@@ -1,0 +1,68 @@
+name = "测试场景"
+description = "两间相邻房间，用于视野、门与秘门测试。"
+image = "maps/图片/测试场景.svg"
+width = 1000
+height = 600
+vision = 60
+
+[grid]
+type = "square"
+size = 100
+distance = 5
+unit = "尺"
+
+[[walls]]
+points = [[0, 0], [1000, 0], [1000, 600], [0, 600], [0, 0]]
+
+[[walls]]
+points = [[500, 0], [500, 250]]
+
+[[walls]]
+points = [[500, 350], [500, 600]]
+
+[[walls]]
+points = [[800, 0], [800, 400]]
+
+[[walls]]
+points = [[800, 500], [800, 600]]
+
+[[doors]]
+id = "中门"
+from = [500, 250]
+to = [500, 350]
+
+[[doors]]
+id = "暗门"
+from = [800, 400]
+to = [800, 500]
+secret = true
+
+[[starts]]
+id = "入口"
+name = "西侧入口"
+at = [150, 300]
+
+[[tokens]]
+id = "守望者"
+document = "人物/守望者"
+at = [650, 300]
+
+[[tokens]]
+id = "木箱"
+label = "木箱"
+at = [300, 150]
+
+[[regions]]
+id = "西室"
+points = [[0, 0], [500, 0], [500, 600], [0, 600]]
+document = "地点/集合点"
+
+[[regions]]
+id = "东室"
+points = [[500, 0], [800, 0], [800, 600], [500, 600]]
+
+[[regions]]
+id = "暗室"
+points = [[800, 0], [1000, 0], [1000, 600], [800, 600]]
+secret = true
+note = "秘门后的隐藏房间"

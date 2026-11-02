@@ -1,10 +1,13 @@
 import { join } from "node:path";
 
+import { documentIdentity } from "@jointarp/module/document-path";
 import type { DocumentType } from "@jointarp/module/document-type";
 import { launchConfigSchema, validateLaunch, type LaunchConfig } from "@jointarp/module/flow";
+import type { ModuleMap } from "@jointarp/module/map";
 import type { RawModuleDocument } from "@jointarp/module/module-document";
 import { loadDocumentTypes } from "@jointarp/module/node/document-types";
 import { loadModuleDocuments } from "@jointarp/module/node/module-documents";
+import { loadModuleMaps, validateModuleMapReferences } from "@jointarp/module/node/module-maps";
 import { loadModuleMetadata } from "@jointarp/module/node/module-metadata";
 
 import type { SessionDatabase } from "../storage/session-database";
@@ -13,7 +16,24 @@ import { roomDirectoryForDatabase } from "./session-paths";
 export interface FrozenModule {
   readonly types: readonly DocumentType[];
   readonly documents: readonly RawModuleDocument[];
+  readonly maps: readonly ModuleMap[];
   readonly launch?: LaunchConfig;
+}
+
+/** 地图配置与关联资料须同时有效，避免房间运行时引用缺失的标记资料。 */
+export async function loadValidatedMaps(
+  directory: string,
+  documents: readonly RawModuleDocument[],
+): Promise<ModuleMap[]> {
+  const maps = await loadModuleMaps(directory);
+  const identities = new Set(
+    documents
+      .filter((document) => document.valid)
+      .map((document) => documentIdentity(document.path)),
+  );
+  const issue = (await validateModuleMapReferences(directory, maps, identities))[0];
+  if (issue) throw new Error(`地图 ${issue.path} 无效：${issue.message}`);
+  return maps;
 }
 
 const modules = new WeakMap<SessionDatabase, FrozenModule>();
@@ -65,7 +85,8 @@ export function loadFrozenModule(directory: string): Promise<FrozenModule> {
           })
         : undefined;
       if (launch) validateLaunch(launch, types, documents);
-      return { types, documents, launch };
+      const maps = await loadValidatedMaps(directory, documents);
+      return { types, documents, maps, launch };
     })();
     cached.set(directory, pending);
     void pending.catch(() => {

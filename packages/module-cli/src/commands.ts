@@ -21,7 +21,7 @@ export const cliHelp = `TARP 模组开发工具
   tarp --version
   tarp --help
 
-validate  校验配置、文档、引用、计算字段、阅读页及开局，不修改模组。
+validate  校验配置、文档、引用、计算字段、阅读页、地图及开局，不修改模组。
 preview   在桌面应用中打开模组，可直接预览 Git 工作区。
 --json    输出结构化校验结果，供开发 Agent 使用。
 
@@ -115,7 +115,7 @@ export async function runModuleCommand(
     };
   return {
     exitCode: result.status === "success" ? 0 : 1,
-    stdout: `${result.status === "success" ? "校验通过" : "校验失败"}：${result.name ?? result.path}\n${result.documentTypeCount} 种文档类型 · ${result.documentCount} 份文档 · ${result.pageCount} 个阅读页\n${result.issues.map((issue) => `[${issue.kind}] ${issue.path}：${issue.message}\n`).join("")}`,
+    stdout: `${result.status === "success" ? "校验通过" : "校验失败"}：${result.name ?? result.path}\n${result.documentTypeCount} 种文档类型 · ${result.documentCount} 份文档 · ${result.pageCount} 个阅读页 · ${result.mapCount} 张地图\n${result.issues.map((issue) => `[${issue.kind}] ${issue.path}：${issue.message}\n`).join("")}`,
     stderr: "",
   };
 }
