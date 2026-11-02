@@ -69,5 +69,10 @@ export function projectMapSection(
         }),
     });
   }
-  return { maps: views };
+  return {
+    maps: views,
+    intents: Object.fromEntries(
+      Object.entries(state.intents).map(([id, intent]) => [id, intent.progress]),
+    ),
+  };
 }

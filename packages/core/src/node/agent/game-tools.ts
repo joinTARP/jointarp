@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { endAdventure } from "../sessions/adventure-status";
 import { storedTypes } from "../sessions/character-db";
+import { frozenModule } from "../sessions/frozen-module";
 import { gameDocumentPatchSchema } from "../sessions/game-document-patch";
 import { gameReadableFiles } from "../sessions/game-file-access";
 import { readOverlayDocument } from "../sessions/game-overlay";
@@ -19,6 +20,7 @@ import {
   writeGameDocument,
 } from "../sessions/game-state";
 import { openSessionDatabase } from "../sessions/session-store";
+import { createMapTools } from "./map-tools";
 import { createModuleTools } from "./tools";
 
 const documentPath = z.string().min(1).max(1000);
@@ -216,5 +218,7 @@ export async function createGameTools(
       return output({ ended: true });
     },
   });
+  if (await withDatabase(room, async (db) => frozenModule(db).maps.length > 0))
+    tools.push(...createMapTools((fn) => withDatabase(room, fn), signal));
   return tools;
 }

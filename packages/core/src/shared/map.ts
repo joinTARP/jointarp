@@ -65,4 +65,6 @@ export interface MapView {
 /** 按全队视野投影的地图区段；只包含队伍已知的地图。 */
 export interface MapSection {
   readonly maps: readonly MapView[];
+  /** 主持已按意图执行的距离，键为携带意图的消息。 */
+  readonly intents: Readonly<Record<string, number>>;
 }
