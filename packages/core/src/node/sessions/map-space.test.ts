@@ -2,7 +2,12 @@ import { test, onTestFinished } from "bun:test";
 import { strict as assert } from "node:assert";
 import { join } from "node:path";
 
-import { explorationGrid, isExplored, decodeExploration } from "@jointarp/module/map-geometry";
+import {
+  explorationGrid,
+  isExplored,
+  decodeExploration,
+  pointInPolygon,
+} from "@jointarp/module/map-geometry";
 import { loadModuleMaps } from "@jointarp/module/node/module-maps";
 import { createTestModule } from "@jointarp/module/testing/test-module";
 
@@ -179,6 +184,21 @@ test("位置锚点解析为格心，沿路线揭示探索记录", async () => {
   );
   assert.deepEqual(resolveAnchor(map, room, state, { point: [12, 3] }, 1), [250, 50]);
   assert.throws(() => resolveAnchor(map, room, state, { region: "不存在" }, 1), /没有区域/);
+  const bent = structuredClone(map);
+  bent.config.regions.push({
+    id: "拐角",
+    secret: false,
+    points: [
+      [0, 0],
+      [1000, 0],
+      [1000, 100],
+      [100, 100],
+      [100, 600],
+      [0, 600],
+    ],
+  });
+  const corner = resolveAnchor(bent, room, state, { region: "拐角" }, 1);
+  assert.ok(pointInPolygon(corner, bent.config.regions.at(-1)!.points));
 
   const before: MapState = structuredClone(state);
   exploreAlong(map, state, party, "旅人", [

@@ -249,13 +249,20 @@ function regionPoint(map: ModuleMap, region: MapRegionConfig, side: MapSide, siz
     ];
     if (pointInPolygon(point, region.points)) return point;
   }
-  return region.points.reduce<Point>(
-    (sum, point) => [
-      sum[0] + point[0] / region.points.length,
-      sum[1] + point[1] / region.points.length,
-    ],
-    [0, 0],
-  );
+  // 中心也在区域外（如 L 形），取区域内离目标最近、能容下占地的采样点。
+  const step = Math.max((maxX - minX) / 64, (maxY - minY) / 64, 1);
+  const edges = regionSegments(region);
+  let best: { point: Point; roomy: boolean; gap: number } | undefined;
+  for (let x = minX + step / 2; x < maxX; x += step)
+    for (let y = minY + step / 2; y < maxY; y += step) {
+      const point: Point = [x, y];
+      if (!pointInPolygon(point, region.points)) continue;
+      const roomy = edges.every((edge) => pointSegmentDistance(point, edge) >= inset);
+      const gap = distance(point, target);
+      if (!best || (roomy && !best.roomy) || (roomy === best.roomy && gap < best.gap))
+        best = { point, roomy, gap };
+    }
+  return best?.point ?? region.points[0]!;
 }
 
 /** 把主持指定的位置解析为像素坐标，方格地图对齐格心。 */
