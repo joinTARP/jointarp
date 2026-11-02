@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { identityIdSchema } from "./identity";
 import type { LaunchState } from "./launch";
+import type { MapResource, MapSection } from "./map";
 import type { GameRoom, GameSession } from "./session";
 import type { SessionMetrics } from "./session-metrics";
 
@@ -45,6 +46,7 @@ export interface RoomBaseline {
 }
 export interface SessionModuleResources extends GameSession {
   launchConfig?: LaunchConfig;
+  maps: MapResource[];
   baseline: RoomBaseline;
 }
 /** 相对模组基线的累计覆盖；Map 项删除表示恢复基线。 */
@@ -89,6 +91,7 @@ export interface RoomSections {
   metrics: SessionMetrics;
   chatActivity: ChatActivitySnapshot;
   companionVersion: string;
+  map: MapSection;
 }
 export interface RoomReplica {
   sections: RoomSections;

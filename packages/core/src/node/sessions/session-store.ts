@@ -42,6 +42,8 @@ import {
 import { resolveGameDocumentPath } from "./game-document-path";
 import { gameDocumentViews, readGameDocumentSnapshot } from "./game-state";
 import { initializeLaunch } from "./launch-db";
+import { mapResources } from "./map-projection";
+import { initializeMapState } from "./map-state";
 import { copyModule, directoryExists } from "./module-copy";
 import { saveModuleSource } from "./module-sync";
 import { recoverModuleSync, hasModuleSyncJournal } from "./module-sync-recovery";
@@ -178,6 +180,7 @@ export async function createSession(
     };
     initializeAdventure(staging, room);
     initializeRoomSettings(staging, defaults);
+    initializeMapState(staging, maps);
     await saveModuleSource(staging, resolve(modulePath));
     const db = new SessionDatabase(join(staging, "session.sqlite"));
     try {
@@ -373,6 +376,7 @@ export async function loadSessionModuleResources(
           ...session,
           documentTypes: frozenModule(db).types,
           launchConfig,
+          maps: mapResources(frozenModule(db).maps),
           baseline: await projectRoomBaseline(db),
         };
       } finally {

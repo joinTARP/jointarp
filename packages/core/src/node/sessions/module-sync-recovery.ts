@@ -33,7 +33,7 @@ export async function recoverModuleSync(directory: string): Promise<void> {
         rmSync(current, { recursive: true, force: true });
       renameSync(previousModule, current);
     }
-    for (const name of ["adventure.json", "document-references.json"]) {
+    for (const name of ["adventure.json", "map-state.json", "document-references.json"]) {
       const backup = join(transaction, `previous-${name}`);
       if (existsSync(backup)) {
         assertRegularFile(backup);
