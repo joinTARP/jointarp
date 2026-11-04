@@ -16,6 +16,7 @@ export function GameToolDialog({
   description,
   wide = false,
   preserveState = false,
+  finalFocus,
   children,
 }: {
   open: boolean;
@@ -24,6 +25,7 @@ export function GameToolDialog({
   description: string;
   wide?: boolean;
   preserveState?: boolean;
+  finalFocus?: React.ComponentProps<typeof DialogContent>["finalFocus"];
   children: ReactNode;
 }) {
   const [hasOpened, setHasOpened] = useState(open);
@@ -32,6 +34,7 @@ export function GameToolDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        finalFocus={finalFocus}
         keepMounted={preserveState && hasOpened}
         className={`flex h-[85dvh] flex-col gap-0 overflow-hidden p-0 ${wide ? "sm:max-w-6xl" : "sm:max-w-3xl"}`}
       >

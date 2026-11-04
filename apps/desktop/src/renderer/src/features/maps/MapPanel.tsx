@@ -1,6 +1,6 @@
 import { firstBlocked } from "@jointarp/module/map-geometry";
 import { Footprints, Maximize2, Undo2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { Button } from "../../components/ui/button";
 import { GameToolDialog } from "../sessions/GameToolDialog";
@@ -102,9 +102,10 @@ export function MapPanel({ roomId }: { roomId: string }) {
 /** 大图：平移缩放，规划本人角色的移动路线。 */
 export function MapDialog({ roomId }: { roomId: string }) {
   const { model, ui, selected } = useSelectedMap(roomId);
+  const returnToComposer = useRef(false);
   const [warning, setWarning] = useState("");
   const own = model.own;
-  const plan = ui.plan;
+  const plan = ui.plan?.map === selected?.resource.id ? ui.plan : undefined;
   const planMap = useMemo(
     () => model.maps.find((item) => item.resource.id === plan?.map),
     [model.maps, plan?.map],
@@ -135,6 +136,13 @@ export function MapDialog({ roomId }: { roomId: string }) {
       onOpenChange={(open) => {
         if (!open) mapUi.close(roomId);
       }}
+      finalFocus={() => {
+        if (!returnToComposer.current) return;
+        returnToComposer.current = false;
+        return document.querySelector<HTMLElement>(
+          `[data-room-composer="${CSS.escape(roomId)}"] [contenteditable="true"]`,
+        );
+      }}
       title={selected.resource.name}
       description="查看队伍已探索的地图，规划本人角色的移动。"
       wide
@@ -154,15 +162,16 @@ export function MapDialog({ roomId }: { roomId: string }) {
                 variant="ghost"
                 size="sm"
                 disabled={!plan?.waypoints.length}
-                onClick={() =>
+                onClick={() => {
+                  setWarning("");
                   plan &&
-                  mapUi.setPlan(
-                    roomId,
-                    plan.waypoints.length > 1
-                      ? { ...plan, waypoints: plan.waypoints.slice(0, -1) }
-                      : undefined,
-                  )
-                }
+                    mapUi.setPlan(
+                      roomId,
+                      plan.waypoints.length > 1
+                        ? { ...plan, waypoints: plan.waypoints.slice(0, -1) }
+                        : undefined,
+                    );
+                }}
               >
                 <Undo2 className="size-4" />
                 撤销
@@ -179,8 +188,15 @@ export function MapDialog({ roomId }: { roomId: string }) {
                 <X className="size-4" />
                 清空
               </Button>
-              <Button size="sm" onClick={() => mapUi.close(roomId)}>
-                完成
+              <Button
+                size="sm"
+                disabled={!plan?.waypoints.length || summary?.blocked}
+                onClick={() => {
+                  returnToComposer.current = true;
+                  mapUi.close(roomId);
+                }}
+              >
+                添加到行动
               </Button>
             </>
           ) : canPlan ? (
@@ -195,7 +211,13 @@ export function MapDialog({ roomId }: { roomId: string }) {
           ) : null}
         </div>
       </div>
+      {planning ? (
+        <p className="text-muted-foreground border-border/60 border-b px-6 py-2 text-xs">
+          路线随行动发送，由主持裁定；规划不会立即移动角色。
+        </p>
+      ) : null}
       <MapCanvas
+        key={selected.resource.id}
         roomId={roomId}
         map={selected}
         tokenName={model.tokenName}

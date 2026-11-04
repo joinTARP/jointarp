@@ -126,7 +126,7 @@ export function ChatComposer({
     if (messageId) void actOnRun(messageId);
   }
   return (
-    <div ref={dockRef} className={styles.composerDock}>
+    <div ref={dockRef} data-room-composer={roomId} className={styles.composerDock}>
       <div aria-hidden="true" className={styles.composerVeil} />
       <div className="relative mx-auto w-full max-w-5xl px-4 pb-4 sm:px-6">
         {backgroundCompanion ? <CompanionActivity name={backgroundCompanion.nickname} /> : null}

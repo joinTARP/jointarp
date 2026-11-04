@@ -14,7 +14,13 @@ export interface PendingRoute {
   readonly waypoints: readonly MapPoint[];
 }
 
+export interface MapCamera {
+  readonly center: MapPoint;
+  readonly scale: number;
+}
+
 interface RoomMapUi {
+  readonly cameras: Readonly<Record<string, MapCamera>>;
   readonly open: boolean;
   readonly planning: boolean;
   readonly mapId?: string;
@@ -22,7 +28,7 @@ interface RoomMapUi {
   readonly routes: Readonly<Record<string, PendingRoute>>;
 }
 
-const initial: RoomMapUi = { open: false, planning: false, routes: {} };
+const initial: RoomMapUi = { open: false, planning: false, routes: {}, cameras: {} };
 const rooms = new Map<string, RoomMapUi>();
 const listeners = new Set<() => void>();
 
