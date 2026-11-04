@@ -3,29 +3,47 @@ import type { MapPoint } from "@jointarp/module/map";
 import { firstBlocked, footprintPixels, snapToGrid } from "@jointarp/module/map-geometry";
 import type Konva from "konva";
 import { LocateFixed, Maximize2, Minus, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Circle, Group, Layer, Line, Stage, Text } from "react-konva";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Circle, Group, Image as KonvaImage, Layer, Line, Stage, Text } from "react-konva";
 
 import { Button } from "../../components/ui/button";
 import { useDocumentImage } from "../modules/document-image";
 import { cameraFromTransform, cameraTransform, zoomCamera } from "./map-camera";
-import { distanceText, knownWalls, summarizePlan, type RoomMap } from "./map-model";
+import {
+  distanceText,
+  knownWalls,
+  summarizePlan,
+  type RoomMap,
+  type TokenPortrait,
+} from "./map-model";
 import { mapUi, useMapUi, type MovementPlan, type PendingRoute } from "./map-ui";
 import { MapTerrain } from "./MapTerrain";
 
-function useLoadedImage(src: string | undefined) {
+function useLoadedImage(src: string | undefined, onError?: (src: string) => void) {
   const [image, setImage] = useState<HTMLImageElement>();
+  const report = useRef(onError);
+  report.current = onError;
   useEffect(() => {
     setImage(undefined);
     if (!src) return;
     const element = new window.Image();
     element.onload = () => setImage(element);
+    element.onerror = () => report.current?.(src);
     element.src = src;
     return () => {
       element.onload = null;
+      element.onerror = null;
     };
   }, [src]);
   return image;
+}
+
+/** 圆形标记里按 cover 取图，并靠上对齐，避免头像只剩衣服。 */
+function portraitCrop(image: HTMLImageElement, size: number) {
+  const scale = Math.max(size / image.width, size / image.height);
+  const width = Math.min(image.width, size / scale);
+  const height = Math.min(image.height, size / scale);
+  return { x: Math.max(0, (image.width - width) / 2), y: 0, width, height };
 }
 
 function useSize(element: HTMLDivElement | null) {
@@ -50,10 +68,106 @@ const tokenColors = {
 
 const flatten = (points: readonly MapPoint[]) => points.flatMap(([x, y]) => [x, y]);
 
+function TokenMarker({
+  roomId,
+  token,
+  name,
+  portrait,
+  radius,
+  screen,
+  fill,
+  stroke,
+  interactive,
+  onHover,
+}: {
+  roomId: string;
+  token: MapTokenView;
+  name: string;
+  portrait?: TokenPortrait;
+  radius: number;
+  screen: number;
+  fill: string;
+  stroke: string;
+  interactive: boolean;
+  onHover: (point: { x: number; y: number } | undefined) => void;
+}) {
+  const scope = `room-module:${roomId}`;
+  const preferred = useDocumentImage(portrait?.path, portrait?.avatar ?? portrait?.image, scope);
+  const fallback = useDocumentImage(
+    portrait?.path,
+    portrait?.avatar && portrait.image ? portrait.image : undefined,
+    scope,
+  );
+  const [broken, setBroken] = useState<ReadonlySet<string>>(() => new Set());
+  const src = [preferred, fallback].find((url) => url && !broken.has(url));
+  const photo = useLoadedImage(src, (failed) =>
+    setBroken((current) => new Set([...current, failed])),
+  );
+  const size = radius * 2;
+  const hoverAt = (event: Konva.KonvaEventObject<MouseEvent>) => {
+    const point = event.target.getStage()?.getPointerPosition();
+    if (point) onHover(point);
+  };
+  return (
+    <Group
+      x={token.at[0]}
+      y={token.at[1]}
+      onMouseEnter={hoverAt}
+      onMouseMove={hoverAt}
+      onMouseLeave={() => onHover(undefined)}
+      onMouseDown={(event) => {
+        if (interactive) event.target.getStage()?.startDrag();
+      }}
+    >
+      <Circle
+        radius={radius}
+        fill={photo ? "#111" : fill}
+        stroke={stroke}
+        strokeWidth={Math.max(2 * screen, radius * 0.08)}
+        shadowColor="black"
+        shadowBlur={6 * screen}
+        shadowOpacity={0.45}
+      />
+      {photo ? (
+        <Group
+          clipFunc={(context) => {
+            context.beginPath();
+            context.arc(0, 0, radius, 0, Math.PI * 2);
+            context.closePath();
+          }}
+        >
+          <KonvaImage
+            image={photo}
+            width={size}
+            height={size}
+            offsetX={radius}
+            offsetY={radius}
+            crop={portraitCrop(photo, size)}
+          />
+        </Group>
+      ) : (
+        <Text
+          text={name.slice(0, 1)}
+          fontSize={radius * 0.9}
+          fontStyle="bold"
+          fill="white"
+          width={size}
+          height={size}
+          offsetX={radius}
+          offsetY={radius}
+          align="center"
+          verticalAlign="middle"
+        />
+      )}
+    </Group>
+  );
+}
+
 export function MapCanvas({
   roomId,
   map,
   tokenName,
+  tokenPortrait,
   ownToken,
   routes = [],
   plan,
@@ -65,6 +179,7 @@ export function MapCanvas({
   roomId: string;
   map: RoomMap;
   tokenName: (token: MapTokenView) => string;
+  tokenPortrait?: (token: MapTokenView) => TokenPortrait | undefined;
   ownToken?: string;
   routes?: readonly PendingRoute[];
   plan?: MovementPlan;
@@ -75,6 +190,7 @@ export function MapCanvas({
 }) {
   const { resource, view } = map;
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const [hover, setHover] = useState<{ name: string; x: number; y: number }>();
   const size = useSize(container);
   const image = useLoadedImage(
     useDocumentImage(resource.path, resource.image, `room-module:${roomId}`),
@@ -92,6 +208,7 @@ export function MapCanvas({
   const camera = saved ? cameraTransform(saved, size) : fit;
   const setCamera = (next: { scale: number; x: number; y: number }) => {
     setPointer(undefined);
+    setHover(undefined);
     mapUi.update(roomId, (state) => ({
       ...state,
       cameras: {
@@ -174,10 +291,12 @@ export function MapCanvas({
           }}
           onMouseLeave={() => {
             setPointer(undefined);
+            setHover(undefined);
           }}
           onDragStart={() => {
             setDragging(true);
             setPointer(undefined);
+            setHover(undefined);
           }}
           onDragEnd={(event) => {
             setDragging(false);
@@ -189,16 +308,6 @@ export function MapCanvas({
         >
           <Layer listening={false}>
             <MapTerrain key={`${roomId}:${resource.id}`} map={map} image={image} />
-            {view.doors.map((door) => (
-              <Line
-                key={door.id}
-                points={flatten([door.from, door.to])}
-                stroke={door.open ? "#86efac" : "#f59e0b"}
-                strokeWidth={(door.open ? 2 : 4) * screen}
-                dash={door.open ? [6 * screen, 4 * screen] : undefined}
-                lineCap="round"
-              />
-            ))}
             {last && previewPoint ? (
               <>
                 <Line
@@ -251,55 +360,34 @@ export function MapCanvas({
                 ))}
               </>
             ) : null}
-            {view.tokens.map((token) => {
-              const radius = (footprintPixels(resource.grid, token.size) / 2) * 0.8;
-              const colors =
-                token.id === ownToken
-                  ? tokenColors.own
-                  : token.party
-                    ? tokenColors.party
-                    : tokenColors.other;
-              const name = tokenName(token);
-              return (
-                <Group key={token.id} x={token.at[0]} y={token.at[1]}>
-                  <Circle
-                    radius={radius}
+          </Layer>
+          <Layer>
+            {view.tokens
+              .filter((token) => token.document)
+              .map((token) => {
+                const colors =
+                  token.id === ownToken
+                    ? tokenColors.own
+                    : token.party
+                      ? tokenColors.party
+                      : tokenColors.other;
+                const name = tokenName(token);
+                return (
+                  <TokenMarker
+                    key={token.id}
+                    roomId={roomId}
+                    token={token}
+                    name={name}
+                    portrait={tokenPortrait?.(token)}
+                    radius={(footprintPixels(resource.grid, token.size) / 2) * 0.72}
+                    screen={screen}
                     fill={colors.fill}
                     stroke={colors.stroke}
-                    strokeWidth={Math.max(2 * screen, radius * 0.08)}
-                    shadowColor="black"
-                    shadowBlur={6 * screen}
-                    shadowOpacity={0.5}
+                    interactive={interactive && !planning}
+                    onHover={(point) => setHover(point ? { name, ...point } : undefined)}
                   />
-                  <Text
-                    text={name.slice(0, 1)}
-                    fontSize={radius}
-                    fontStyle="bold"
-                    fill="white"
-                    width={radius * 2}
-                    height={radius * 2}
-                    offsetX={radius}
-                    offsetY={radius}
-                    align="center"
-                    verticalAlign="middle"
-                  />
-                  {interactive ? (
-                    <Text
-                      text={name}
-                      fontSize={12 * screen}
-                      fill="#f9fafb"
-                      shadowColor="black"
-                      shadowBlur={4 * screen}
-                      shadowOpacity={0.9}
-                      width={160 * screen}
-                      offsetX={80 * screen}
-                      y={radius + 3 * screen}
-                      align="center"
-                    />
-                  ) : null}
-                </Group>
-              );
-            })}
+                );
+              })}
           </Layer>
         </Stage>
       ) : null}
@@ -368,6 +456,14 @@ export function MapCanvas({
               : "拖动平移 · 滚轮缩放"}
           </div>
         </>
+      ) : null}
+      {hover && !dragging ? (
+        <div
+          className="bg-popover text-popover-foreground pointer-events-none absolute z-10 -translate-x-1/2 rounded-md px-2 py-1 text-xs shadow-md"
+          style={{ left: hover.x, top: Math.max(4, hover.y - 28) }}
+        >
+          {hover.name}
+        </div>
       ) : null}
     </div>
   );

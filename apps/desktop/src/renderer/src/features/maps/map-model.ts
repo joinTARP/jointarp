@@ -24,6 +24,13 @@ export interface RoomMap {
   readonly view: MapView;
 }
 
+/** 标记关联资料上的头像；没有头像时用封面。 */
+export interface TokenPortrait {
+  readonly path: string;
+  readonly avatar?: string;
+  readonly image?: string;
+}
+
 /** 队伍已知的地图与当前投影；静态资料来自冻结模组，动态部分来自房间同步。 */
 export function useRoomMaps(roomId: string) {
   const connection = roomConnection(desktopRpc.game, roomId, localRoomModuleLoader);
@@ -44,6 +51,16 @@ export function useRoomMaps(roomId: string) {
     const names = new Map(
       (documents ?? []).map((document) => [documentIdentity(document.path), document.title]),
     );
+    const portraits = new Map(
+      Object.values(replica?.entities ?? {}).map((entity) => [
+        documentIdentity(entity.document.path),
+        {
+          path: entity.document.path,
+          avatar: entity.document.avatar,
+          image: entity.document.image,
+        },
+      ]),
+    );
     const own = maps.flatMap(({ resource, view }) =>
       view.tokens
         .filter((token) => token.party && token.playerId === viewerId)
@@ -59,8 +76,10 @@ export function useRoomMaps(roomId: string) {
         (token.document
           ? (names.get(token.document) ?? token.document.split("/").at(-1) ?? token.document)
           : token.id),
+      tokenPortrait: (token: MapTokenView) =>
+        token.document ? portraits.get(token.document) : undefined,
     };
-  }, [resources, section, viewerId, documents]);
+  }, [resources, section, viewerId, documents, replica]);
 }
 
 /** 玩家可知的阻挡：配置的墙与尚未揭示的秘门。 */

@@ -89,6 +89,7 @@ export function MapPanel({ roomId }: { roomId: string }) {
           roomId={roomId}
           map={selected}
           tokenName={model.tokenName}
+          tokenPortrait={model.tokenPortrait}
           ownToken={model.own?.token.id}
           routes={routes}
           plan={ui.plan?.map === selected.resource.id ? ui.plan : undefined}
@@ -143,13 +144,11 @@ export function MapDialog({ roomId }: { roomId: string }) {
           `[data-room-composer="${CSS.escape(roomId)}"] [contenteditable="true"]`,
         );
       }}
-      title={selected.resource.name}
+      title={<MapSwitcher roomId={roomId} maps={model.maps} selected={selected} />}
       description="查看队伍已探索的地图，规划本人角色的移动。"
       wide
-    >
-      <div className="border-border/60 flex shrink-0 flex-wrap items-center gap-2 border-b px-6 py-2 text-sm">
-        <MapSwitcher roomId={roomId} maps={model.maps} selected={selected} />
-        <div className="ml-auto flex items-center gap-2">
+      headerActions={
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {planning ? (
             <>
               <span role="status" className="text-muted-foreground text-xs">
@@ -210,7 +209,8 @@ export function MapDialog({ roomId }: { roomId: string }) {
             </Button>
           ) : null}
         </div>
-      </div>
+      }
+    >
       {planning ? (
         <p className="text-muted-foreground border-border/60 border-b px-6 py-2 text-xs">
           路线随行动发送，由主持裁定；规划不会立即移动角色。
@@ -221,6 +221,7 @@ export function MapDialog({ roomId }: { roomId: string }) {
         roomId={roomId}
         map={selected}
         tokenName={model.tokenName}
+        tokenPortrait={model.tokenPortrait}
         ownToken={own?.token.id}
         routes={activeRoutes(selected, ui.routes)}
         plan={plan?.map === selected.resource.id ? plan : undefined}
