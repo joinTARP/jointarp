@@ -42,6 +42,7 @@ import {
   saveLaunchRoom,
 } from "./launch-db";
 import { allLaunchProgress } from "./launch-db";
+import { seatPartyAtStart } from "./map-commands";
 import { assertSessionActive } from "./session-store";
 
 function canSelectCharacter(
@@ -494,6 +495,7 @@ export async function advanceLaunch(root: string, input: LaunchAction, playerId:
       if (db.sqlite.inTransaction) db.sqlite.exec("ROLLBACK");
       throw error;
     }
+    if (a.action === "confirm") await seatPartyAtStart(db);
   });
   return launchState(root, a.roomId, playerId);
 }

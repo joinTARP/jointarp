@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createTestModule } from "@jointarp/module/testing/test-module";
 
 import type { ChatMessage } from "../../shared/game";
-import { moveToken, readMap, updateMap } from "./map-commands";
+import { moveToken, readMap, seatPartyAtStart, updateMap } from "./map-commands";
 import { mapPositionPrompt, movementPrompt } from "./map-description";
 import { prepareMovement } from "./map-intent";
 import { readMapState } from "./map-state";
@@ -29,6 +29,17 @@ async function room() {
   onTestFinished(() => db.close());
   return { db, roomId: created.id };
 }
+
+test("单起点地图在入队时把队伍角色放到起点", async () => {
+  const { db } = await room();
+  await seatPartyAtStart(db);
+  const state = readMapState(db);
+  assert.equal(state.maps["测试场景"]!.known, true);
+  assert.deepEqual(state.tokens["角色/旅人"]?.at, [150, 250]);
+  const at = state.tokens["角色/旅人"]!.at;
+  await seatPartyAtStart(db);
+  assert.deepEqual(readMapState(db).tokens["角色/旅人"]?.at, at);
+});
 
 test("主持放置队伍角色后地图对玩家可见，读取结果包含区域、门、标记与探索比例", async () => {
   const { db } = await room();

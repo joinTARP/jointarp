@@ -331,6 +331,52 @@ function newTokenId(state: MapState, base: string) {
   for (let index = 2; ; index++) if (!state.tokens[`${base}-${index}`]) return `${base}-${index}`;
 }
 
+/**
+ * 只有一张地图且只有一个起点时，把尚未入图的队伍角色放到该起点。
+ * 多人时第一个在起点，其余依次站在旁边。多张地图或多个起点仍由主持放置。
+ */
+export async function seatPartyAtStart(db: SessionDatabase): Promise<void> {
+  const maps = frozenModule(db).maps;
+  const map = maps.length === 1 ? maps[0] : undefined;
+  const start = map?.config.starts.length === 1 ? map.config.starts[0] : undefined;
+  if (!map || !start) return;
+  await withStateLock(gameDirectoryForDatabase(db), async () => {
+    assertGameWritable(db);
+    const state = readMapState(db);
+    const party = partyIndex(db);
+    const missing = [...party.keys()].filter(
+      (document) => !Object.values(state.tokens).some((token) => token.document === document),
+    );
+    if (!missing.length) return;
+    let previous: string | undefined;
+    for (const document of missing) {
+      const tokenId = state.tokens[document] ? newTokenId(state, document) : document;
+      const token: MapTokenState = {
+        map: map.id,
+        at: [0, 0],
+        size: 1,
+        hidden: false,
+        blocksVision: false,
+        blocksMovement: false,
+        document,
+      };
+      token.at = resolveAnchor(
+        map,
+        state.maps[map.id]!,
+        state,
+        previous ? { near: previous } : { start: start.id },
+        token.size,
+        tokenId,
+      );
+      state.tokens[tokenId] = token;
+      previous = tokenId;
+    }
+    state.maps[map.id]!.known = true;
+    exploreCurrentVision(map, state, party);
+    writeMapState(db, state);
+  });
+}
+
 /** 主持维护标记、门与地图可见性；队伍角色放入地图后该地图对玩家可见。 */
 export async function updateMap(db: SessionDatabase, raw: unknown, signal?: AbortSignal) {
   const input = mapUpdateSchema.parse(raw);
