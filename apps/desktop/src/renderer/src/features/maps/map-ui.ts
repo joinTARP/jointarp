@@ -49,10 +49,20 @@ export const mapUi = {
     rooms.set(roomId, next);
     for (const listener of listeners) listener();
   },
-  open(roomId: string, options: { mapId?: string; planning?: boolean } = {}) {
+  open(roomId: string, options: { mapId?: string; planning?: boolean; center?: MapPoint } = {}) {
     mapUi.update(roomId, (state) => ({
       ...state,
       open: true,
+      cameras:
+        options.mapId && options.center
+          ? {
+              ...state.cameras,
+              [options.mapId]: {
+                center: options.center,
+                scale: state.cameras[options.mapId]?.scale ?? 1,
+              },
+            }
+          : state.cameras,
       planning: options.planning ?? state.planning,
       mapId: options.mapId ?? state.mapId,
     }));

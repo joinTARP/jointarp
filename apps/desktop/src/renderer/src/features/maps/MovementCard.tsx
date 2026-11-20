@@ -35,18 +35,23 @@ export function MovementCard({
     return () => mapUi.hideRoute(roomId, messageId);
   }, [pending, roomId, messageId, sequence, intent]);
   const map = model.maps.find((item) => item.resource.id === intent.map);
-  const token = map?.view.tokens.find((item) => item.id === intent.token);
+  const currentMap = model.maps.find((item) => item.view.tokens.some((t) => t.id === intent.token));
+  const token = currentMap?.view.tokens.find((item) => item.id === intent.token);
   const name = token ? model.tokenName(token) : intent.token.split("/").at(-1);
   const status = !submitted
     ? "已改为聊天，未提交"
     : progress === undefined
       ? "等待主持裁定"
-      : `主持已执行 ${progress} ${intent.unit}`;
+      : intent.length === null
+        ? `已走 ${progress} ${intent.unit}`
+        : `已走 ${progress} / ${intent.length} ${intent.unit}`;
   return (
     <button
       type="button"
-      disabled={!map}
-      onClick={() => mapUi.open(roomId, { mapId: intent.map })}
+      disabled={!currentMap && !map}
+      onClick={() =>
+        mapUi.open(roomId, { mapId: currentMap?.resource.id ?? intent.map, center: token?.at })
+      }
       className="border-border/70 bg-muted/40 hover:bg-muted/70 disabled:hover:bg-muted/40 mt-2 flex w-full max-w-sm items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-default"
     >
       <Footprints aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />

@@ -27,6 +27,8 @@ test("切图和关闭后保留各自视角与行动草稿，窗口变化保留�
   mapUi.open(room, { mapId: "first" });
   expect(mapUi.get(room).plan).toEqual(plan);
   expect(mapUi.get(room).cameras.second).toEqual(second);
+  mapUi.open(room, { mapId: "second", center: [70, 90] });
+  expect(mapUi.get(room).cameras.second).toEqual({ ...second, center: [70, 90] });
   const size = { width: 1000, height: 500 };
   const restored = cameraTransform(mapUi.get(room).cameras.first!, size);
   expect(cameraFromTransform(restored, size)).toEqual(first);
