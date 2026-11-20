@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 
 import { loadDocumentTypes } from "@jointarp/module/node/document-types";
 import { loadModuleLibraryDocuments } from "@jointarp/module/node/module-documents";
+import { loadModuleMapEntries } from "@jointarp/module/node/module-maps";
 import { loadModuleMetadata } from "@jointarp/module/node/module-metadata";
 import { loadModulePages } from "@jointarp/module/node/module-pages";
 import { ORPCError } from "@orpc/server";
@@ -54,6 +55,9 @@ async function loadLibraryFromPath(path: string): Promise<OpenModuleLibraryResul
 }
 
 export const moduleRouter = {
+  maps: procedure
+    .input(z.object({ path: z.string().min(1) }))
+    .handler(({ input }) => loadModuleMapEntries(assertAbsolutePath(input.path))),
   importState: procedure.handler(({ context }) => context.moduleImports.get()),
   confirmImport: procedure
     .input(z.object({ id: z.number().int(), replace: z.boolean() }))
