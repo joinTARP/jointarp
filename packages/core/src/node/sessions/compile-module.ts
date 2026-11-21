@@ -6,6 +6,7 @@ import { configFilePath, parseConfig } from "@jointarp/module/node/config-file";
 import { parseDocumentContent } from "@jointarp/module/node/document-codec";
 import { loadDocumentTypes } from "@jointarp/module/node/document-types";
 import { loadModuleDocuments } from "@jointarp/module/node/module-documents";
+import { loadModuleMaps } from "@jointarp/module/node/module-maps";
 import { loadModuleMetadata } from "@jointarp/module/node/module-metadata";
 
 /** 只编译 staging 副本；保留作者原值、公式及引用，阅读页和附件不转换。 */
@@ -29,6 +30,7 @@ export async function compileModule(directory: string): Promise<void> {
   for (const entry of await readdir(join(directory, ".types"), { withFileTypes: true }))
     if (entry.isFile() && /\.(fields|layout)\.toml$/u.test(entry.name))
       await config(`.types/${entry.name}`);
+  for (const map of await loadModuleMaps(directory)) await config(map.path);
   for (const document of documents) {
     if (/\.json$/iu.test(document.path)) continue;
     conversions.push({

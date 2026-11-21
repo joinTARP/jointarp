@@ -14,14 +14,18 @@ export function GameToolDialog({
   onOpenChange,
   title,
   description,
+  headerActions,
+  finalFocus,
   wide = false,
   preserveState = false,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  title: string;
+  title: ReactNode;
   description: string;
+  headerActions?: ReactNode;
+  finalFocus?: React.ComponentProps<typeof DialogContent>["finalFocus"];
   wide?: boolean;
   preserveState?: boolean;
   children: ReactNode;
@@ -32,11 +36,15 @@ export function GameToolDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        finalFocus={finalFocus}
         keepMounted={preserveState && hasOpened}
         className={`flex h-[85dvh] flex-col gap-0 overflow-hidden p-0 ${wide ? "sm:max-w-6xl" : "sm:max-w-3xl"}`}
       >
-        <DialogHeader className="border-border/60 shrink-0 border-b px-6 py-5 pr-16">
-          <DialogTitle>{title}</DialogTitle>
+        <DialogHeader
+          className={`border-border/60 shrink-0 border-b px-6 pr-16 ${headerActions ? "flex-row! flex-wrap items-center gap-3! py-4" : "py-5"}`}
+        >
+          <DialogTitle className="min-w-0 truncate">{title}</DialogTitle>
+          {headerActions}
           <DialogDescription className="sr-only">{description}</DialogDescription>
         </DialogHeader>
         {children}

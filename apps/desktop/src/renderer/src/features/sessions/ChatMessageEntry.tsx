@@ -20,6 +20,7 @@ import type { Components, ExtraProps } from "react-markdown";
 
 import { Button } from "../../components/ui/button";
 import { Tooltip } from "../../components/ui/tooltip";
+import { MovementCard } from "../maps/MovementCard";
 import { useDocumentImage, useDocumentPortrait } from "../modules/document-image";
 import { documentReferencePath } from "../modules/document-preview";
 import {
@@ -465,9 +466,22 @@ const MessageSegment = memo(function MessageSegment({
               )}
             </div>
           ) : message.kind === "player" ? (
-            <div className="text-foreground text-[15px] leading-7 break-words [&_p]:whitespace-pre-wrap">
-              <NarrativeText text={message.text} />
-            </div>
+            <>
+              {message.text ? (
+                <div className="text-foreground text-[15px] leading-7 break-words [&_p]:whitespace-pre-wrap">
+                  <NarrativeText text={message.text} />
+                </div>
+              ) : null}
+              {message.movement ? (
+                <MovementCard
+                  roomId={message.roomId}
+                  messageId={message.id}
+                  sequence={message.sequence}
+                  intent={message.movement}
+                  submitted={!message.chatOnly}
+                />
+              ) : null}
+            </>
           ) : null}
           {message.status !== "complete" && message.status !== "queued" && !live ? (
             <p role="status" className="text-muted-foreground mt-1 text-xs">

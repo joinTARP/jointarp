@@ -36,11 +36,14 @@ import {
   forgetFrozenModule,
   frozenModule,
   loadFrozenModule,
+  loadValidatedMaps,
   setFrozenModule,
 } from "./frozen-module";
 import { resolveGameDocumentPath } from "./game-document-path";
 import { gameDocumentViews, readGameDocumentSnapshot } from "./game-state";
 import { initializeLaunch } from "./launch-db";
+import { mapResources } from "./map-projection";
+import { initializeMapState } from "./map-state";
 import { copyModule, directoryExists } from "./module-copy";
 import { saveModuleSource } from "./module-sync";
 import { recoverModuleSync, hasModuleSyncJournal } from "./module-sync-recovery";
@@ -166,6 +169,7 @@ export async function createSession(
     if (!documentTypes.length || !documents.length) throw new Error("模组没有可用于开局的文档");
     const invalid = documents.find((document) => !document.valid);
     if (invalid) throw new Error(`请先修复模组文档 ${invalid.path}：${invalid.error}`);
+    const maps = await loadValidatedMaps(moduleCopy, documents);
     const room: GameRoom = {
       id,
       name,
@@ -176,13 +180,14 @@ export async function createSession(
     };
     initializeAdventure(staging, room);
     initializeRoomSettings(staging, defaults);
+    initializeMapState(staging, maps);
     await saveModuleSource(staging, resolve(modulePath));
     const db = new SessionDatabase(join(staging, "session.sqlite"));
     try {
       await db.migrate();
       associateSessionDirectory(db, staging);
       retainRoomResources(db, staging);
-      setFrozenModule(db, { types: documentTypes, documents, launch });
+      setFrozenModule(db, { types: documentTypes, documents, maps, launch });
       db.sqlite.exec("BEGIN");
       beginAdventureEdit(db);
       initializeCharacters(db);
@@ -371,6 +376,7 @@ export async function loadSessionModuleResources(
           ...session,
           documentTypes: frozenModule(db).types,
           launchConfig,
+          maps: mapResources(frozenModule(db).maps),
           baseline: await projectRoomBaseline(db),
         };
       } finally {

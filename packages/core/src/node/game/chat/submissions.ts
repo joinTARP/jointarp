@@ -3,8 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { ORPCError } from "@orpc/server";
 
 import type { ChatMessage, Player, SendInput } from "../../../shared/game";
+import type { MovementIntent } from "../../../shared/map";
 import { parseMentionRefs, resolveMentionRefs } from "../../../shared/mentions";
 import { assertPlayerReady, readCharacters } from "../../sessions/character-db";
+import { movementPrompt } from "../../sessions/map-description";
+import { prepareMovement } from "../../sessions/map-intent";
 import { assertSessionActive } from "../../sessions/session-store";
 import type { ChatInputBatches } from "./input-batches";
 import type { ChatMentionQueue } from "./mention-queue";
@@ -171,7 +174,7 @@ export class ChatSubmissions {
       playerId: player.id,
       requestId: input.clientMessageId,
       fingerprint: createHash("sha256")
-        .update(JSON.stringify([input.text, input.chatOnly]))
+        .update(JSON.stringify([input.text, input.chatOnly, input.movement ?? null]))
         .digest("hex"),
     };
     return this.request(state, request, () => this.sendOnce(state, input, player, request));
@@ -201,10 +204,14 @@ export class ChatSubmissions {
     const targets = await this.context.mentions.targets(state, player);
     this.assertAvailable(state);
     const text = input.text.trim();
-    if (!text || text.length > 4000)
+    if ((!text && !input.movement) || text.length > 4000)
       throw new ORPCError("BAD_REQUEST", { message: "消息应为 1 至 4000 个字符" });
     const mentioned = resolveMentionRefs(parseMentionRefs(text), targets);
     const only = input.chatOnly || mentioned.length > 0;
+    if (input.movement && only)
+      throw new ORPCError("BAD_REQUEST", {
+        message: "移动意图只能随行动消息提交，不能用于聊天或点名",
+      });
     // 接收时由稳定身份计算用途；失效引用仍按原手动模式处理。
     if (!only) {
       if (!this.context.activity.running(state)) this.context.inputs.assertResolved(state);
@@ -268,6 +275,16 @@ export class ChatSubmissions {
       }
       const saved = this.context.store.submissionResult(state, request);
       if (saved) return saved;
+      let movement: MovementIntent | undefined;
+      if (input.movement)
+        try {
+          movement = prepareMovement(state.db, player.id, input.movement);
+        } catch (error) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: error instanceof Error ? error.message : "移动意图无效",
+          });
+        }
+      const messageId = randomUUID();
       const manual = this.context.queue.mode(state) === "manual";
       const willRun = !only && !manual;
       if (!only && this.context.activity.running(state))
@@ -291,7 +308,12 @@ export class ChatSubmissions {
       const turns = hostRun
         ? [
             ...this.context.queue.pendingTurns(state, pending),
-            { text, playerId: player.id, characterName: character?.name },
+            {
+              text,
+              playerId: player.id,
+              characterName: character?.name,
+              ...(movement ? { movement: movementPrompt(state.db, messageId, movement) } : {}),
+            },
           ]
         : [];
       const prompt = hostRun ? this.context.queue.hostPrompt(state, turns, pending) : "";
@@ -306,7 +328,7 @@ export class ChatSubmissions {
           if (!only) this.context.queue.replacePending(state, player.id);
           if (hostRun) this.context.queue.consumePending(state, pending);
           const message = this.context.store.save(state, {
-            id: randomUUID(),
+            id: messageId,
             sequence: 0,
             revision: 0,
             roomId: input.roomId,
@@ -317,6 +339,7 @@ export class ChatSubmissions {
             text,
             ...(mentioned.length ? { mentions: mentioned } : {}),
             chatOnly: only,
+            ...(movement ? { movement } : {}),
             ...(!only && (manual || companions.length) ? { pendingAgent: true } : {}),
             status: "complete",
           });

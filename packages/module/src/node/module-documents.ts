@@ -5,6 +5,7 @@ import { resolveModuleDocuments, type ParsedModuleDocument } from "../schema/doc
 import { documentFormat, documentIdentity, documentTypeId } from "../schema/document-path";
 import type { DocumentContentType, DocumentType } from "../schema/document-type";
 import { documentMetadataSchema, validateDocumentValues } from "../schema/document-type";
+import { mapDirectory } from "../schema/map";
 import type { ModuleDocument, RawModuleDocument } from "../schema/module-document";
 import { parseDocumentContent } from "./document-codec";
 import { loadModuleMetadata } from "./module-metadata";
@@ -13,13 +14,14 @@ import { modulePagePath } from "./module-pages";
 const ignoredDirectories = new Set(["node_modules"]);
 const ignoredFiles = new Set(["AGENTS.md", "module.json", "module.toml"]);
 
-async function findContentFiles(directory: string): Promise<string[]> {
+async function findContentFiles(directory: string, root = true): Promise<string[]> {
   const files: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.name.startsWith(".") || ignoredFiles.has(entry.name)) continue;
     const path = join(directory, entry.name);
+    if (root && entry.name === mapDirectory) continue;
     if (entry.isDirectory() && !ignoredDirectories.has(entry.name)) {
-      files.push(...(await findContentFiles(path)));
+      files.push(...(await findContentFiles(path, false)));
     } else if (entry.isFile() && /\.(json|toml|md)$/iu.test(entry.name)) {
       files.push(path);
     }

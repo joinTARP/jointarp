@@ -39,6 +39,7 @@ function fixture() {
         module: { name: "测试" },
         documentTypes: [],
         documents: [],
+        maps: [],
         pages: [],
       };
     },

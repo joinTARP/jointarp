@@ -33,6 +33,7 @@ export function createRoomReplica(): RoomReplica {
       },
       launch: null,
       companionVersion: "initial",
+      map: { maps: [], intents: {} },
       chatActivity: { running: null, queued: null },
       metrics: {
         host: {

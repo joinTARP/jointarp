@@ -95,6 +95,7 @@ export class RoomStateStore {
         "metrics",
         "chatActivity",
         "companionVersion",
+        "map",
       ] as const) {
         const json = decoder.state.sections.get(key);
         if (json === undefined) throw new Error("房间状态缺少必要字段");

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { diceDataSchema } from "./dice";
 import { identityIdSchema } from "./identity";
 import { launchActionSchema } from "./launch";
+import { movementIntentInputSchema, movementIntentSchema } from "./map";
 import { mentionTargetSchema, mentionReplyLimitSchema, mentionsSchema } from "./mentions";
 import { ROOM_PROTOCOL_VERSION, roomStateFrameSchema, type RoomLaunchState } from "./room-state";
 
@@ -128,6 +129,7 @@ export const hostInputBatchSchema = z.object({
         playerId: identityIdSchema,
         characterName: z.string().optional(),
         text: z.string(),
+        movement: z.string().optional(),
       }),
     )
     .min(1),
@@ -140,6 +142,8 @@ export const messageSchema = z.discriminatedUnion("kind", [
     text: z.string(),
     /** 仅聊天，不作为行动裁定；合法点名主持时可唤起主持场外回应。 */
     chatOnly: z.boolean(),
+    /** 随行动提交的移动意图卡；实际结果由主持确认后体现在地图上。 */
+    movement: movementIntentSchema.optional(),
   }),
   messageBase.extend({ kind: z.literal("card"), card: cardDataSchema }),
   messageBase.extend({
@@ -279,11 +283,14 @@ const roomNotificationSchema = z.discriminatedUnion("type", [
 ]);
 export type RoomNotification = z.infer<typeof roomNotificationSchema>;
 const room = z.object({ roomId: z.string().uuid() });
-const sendSchema = room.extend({
-  clientMessageId: z.string().uuid(),
-  text: z.string().trim().min(1).max(4000),
-  chatOnly: z.boolean(),
-});
+const sendSchema = room
+  .extend({
+    clientMessageId: z.string().uuid(),
+    text: z.string().trim().max(4000),
+    chatOnly: z.boolean(),
+    movement: movementIntentInputSchema.optional(),
+  })
+  .refine((input) => input.text || input.movement, { message: "消息不能为空", path: ["text"] });
 export type SendInput = z.infer<typeof sendSchema>;
 export const gameContract = {
   room: {

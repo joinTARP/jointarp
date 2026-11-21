@@ -2,12 +2,14 @@ import { mkdir } from "node:fs/promises";
 
 import { loadDocumentTypes } from "@jointarp/module/node/document-types";
 import { loadModuleLibraryDocuments } from "@jointarp/module/node/module-documents";
+import { loadModuleMapEntries } from "@jointarp/module/node/module-maps";
 import { loadModuleMetadata } from "@jointarp/module/node/module-metadata";
 import { loadModulePages } from "@jointarp/module/node/module-pages";
 import { ORPCError } from "@orpc/server";
 import type { ModulesDirectory, OpenModuleLibraryResult } from "@shared/desktop-api";
 import { z } from "zod";
 
+import { mapEditSchema } from "../../shared/map-vertex";
 import {
   assertAbsolutePath,
   readAppConfig,
@@ -20,6 +22,7 @@ import { allowDocumentMediaRoots } from "../media-path";
 import { documentsPath, showPathPicker } from "../native-dialog";
 import { importLocalModule } from "./import-local-module";
 import { listModules } from "./list-modules";
+import { openMapEdit, saveMapEdit } from "./map-editor";
 
 export async function readModulesDirectory(configFilePath: string): Promise<ModulesDirectory> {
   const documentsDir = documentsPath();
@@ -53,7 +56,30 @@ async function loadLibraryFromPath(path: string): Promise<OpenModuleLibraryResul
   }
 }
 
+const editFile = z.strictObject({ path: z.string().min(1), file: z.string().min(1) });
 export const moduleRouter = {
+  openMapEdit: procedure
+    .input(editFile)
+    .handler(({ input }) => openMapEdit(assertAbsolutePath(input.path), input.file)),
+  saveMapEdit: procedure
+    .input(
+      editFile.extend({
+        revision: z.string().length(64),
+        edits: z.array(mapEditSchema).min(1).max(10000),
+      }),
+    )
+    .handler(({ input }) => {
+      try {
+        saveMapEdit(assertAbsolutePath(input.path), input.file, input.revision, input.edits);
+      } catch (error) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: error instanceof Error ? error.message : "地图保存失败",
+        });
+      }
+    }),
+  maps: procedure
+    .input(z.object({ path: z.string().min(1) }))
+    .handler(({ input }) => loadModuleMapEntries(assertAbsolutePath(input.path))),
   importState: procedure.handler(({ context }) => context.moduleImports.get()),
   confirmImport: procedure
     .input(z.object({ id: z.number().int(), replace: z.boolean() }))

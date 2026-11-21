@@ -74,7 +74,7 @@ const historyRoute = createRoute({
 interface ModuleSearch {
   readonly path: string;
   readonly type?: string;
-  readonly page?: "types" | "prelude" | "starts" | "creation";
+  readonly page?: "types" | "prelude" | "starts" | "creation" | "maps";
   readonly define?: string;
   readonly reading?: string;
 }
@@ -93,7 +93,8 @@ const moduleRoute = createRoute({
         search.page === "types" ||
         search.page === "prelude" ||
         search.page === "starts" ||
-        search.page === "creation"
+        search.page === "creation" ||
+        search.page === "maps"
           ? search.page
           : undefined,
       define:

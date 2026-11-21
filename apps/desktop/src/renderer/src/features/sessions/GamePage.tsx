@@ -25,6 +25,8 @@ import {
 import { LoadingIndicator } from "../../components/ui/loading-indicator";
 import { ScrollAreaPane } from "../../components/ui/scroll-area";
 import { desktopOrpc, desktopRpc } from "../../desktop-rpc";
+import { useMapUi } from "../maps/map-ui";
+import { MapDialog, MapPanel } from "../maps/MapPanel";
 import { DocumentReferences } from "../modules/DocumentReferences";
 import { CharacterSummary } from "./CharacterSummary";
 import { ChatPanel, type ChatPanelHandle } from "./ChatPanel";
@@ -81,6 +83,7 @@ export function GamePage() {
     void navigate({ to: "/game/$roomId/settings", params: { roomId } });
   const display = useQuery(desktopOrpc.sessions.display.get.queryOptions({ input: { roomId } }));
   const session = useRoomSession(roomId);
+  const mapOpen = useMapUi(roomId).open;
   const launch = useRoomLaunch(roomId);
   const player = useQuery(desktopOrpc.player.get.queryOptions());
   const character = launch.data?.characters.find((c) => c.playerId === player.data?.id);
@@ -206,9 +209,12 @@ export function GamePage() {
                       }
                     />
                     {ready && active ? (
-                      <div className="px-2 pt-2">
-                        <WorldStateCard session={session.data} />
-                      </div>
+                      <>
+                        <div className="px-2 pt-2">
+                          <WorldStateCard session={session.data} />
+                        </div>
+                        <MapPanel roomId={roomId} />
+                      </>
                     ) : null}
                   </>
                 ) : null}
@@ -327,7 +333,13 @@ export function GamePage() {
                       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                         <ChatPanel
                           actionsRef={chatActions}
-                          active={!booting && !settingsPage && activeTool === null && !confirmLeave}
+                          active={
+                            !booting &&
+                            !settingsPage &&
+                            activeTool === null &&
+                            !confirmLeave &&
+                            !mapOpen
+                          }
                           roomId={roomId}
                           session={session.data}
                           characters={launch.data?.characters ?? []}
@@ -358,6 +370,7 @@ export function GamePage() {
                         />
                       </div>
                     </div>
+                    {ready ? <MapDialog key={`map:${roomId}`} roomId={roomId} /> : null}
                     <GameToolDialog
                       key={`notes:${roomId}`}
                       open={ready && activeTool === "notes"}

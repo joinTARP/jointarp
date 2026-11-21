@@ -6,8 +6,12 @@ import type { ChatMessage, Player } from "../../../shared/game";
 import type { ChatActivitySnapshot, RoomBaseline, RoomReplica } from "../../../shared/room-state";
 import type { RoomProjection } from "../../../shared/room-state";
 import { readAdventureState } from "../../sessions/adventure-state";
+import { frozenModule } from "../../sessions/frozen-module";
 import { stateRevision } from "../../sessions/game-state";
 import { launchState } from "../../sessions/launch-store";
+import { projectMapSection } from "../../sessions/map-projection";
+import { partyIndex } from "../../sessions/map-space";
+import { readMapState } from "../../sessions/map-state";
 import { roomGeneration } from "../../sessions/room-changes";
 import { readRoomFileSync } from "../../sessions/room-file";
 import { gameDirectoryForDatabase, roomDirectoryForDatabase } from "../../sessions/session-paths";
@@ -41,6 +45,7 @@ export class ChatSync {
           launch: RoomReplica["sections"]["launch"];
         }
       >;
+      map?: { revision: number; section: RoomReplica["sections"]["map"] };
     }
   >();
   private projection(state: RoomState) {
@@ -123,6 +128,16 @@ export class ChatSync {
         if (state.closed) throw new ORPCError("UNAVAILABLE");
         if (generation !== roomGeneration(directory)) return;
         const selection = readAdventureState(state.db);
+        let map = this.projection(state).map;
+        if (map?.revision !== revision)
+          this.projection(state).map = map = {
+            revision,
+            section: projectMapSection(
+              frozenModule(state.db).maps,
+              readMapState(state.db),
+              partyIndex(state.db),
+            ),
+          };
         return {
           entities,
           documentRevision,
@@ -149,6 +164,7 @@ export class ChatSync {
                 }),
               )
               .digest("hex"),
+            map: map.section,
           },
         };
       });
