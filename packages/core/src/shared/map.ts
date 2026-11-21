@@ -41,6 +41,7 @@ export interface MapTokenView {
   readonly party: boolean;
   /** 控制该角色的玩家或队友身份。 */
   readonly playerId?: string;
+  readonly relay?: boolean;
 }
 
 export interface MapDoorView {

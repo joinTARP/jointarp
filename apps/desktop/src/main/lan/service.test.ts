@@ -8,6 +8,7 @@ import { MessageChannel } from "node:worker_threads";
 
 import { ChatService, gameRouter } from "@jointarp/core/node";
 import { createSession } from "@jointarp/core/node/sessions/session-store";
+import type { RoomStateFrame } from "@jointarp/core/shared/room-state";
 import { writeTestFile as writeFile } from "@jointarp/module/testing/files";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink as PortLink } from "@orpc/client/message-port";
@@ -15,6 +16,7 @@ import { os, type RouterClient } from "@orpc/server";
 import { RPCHandler as PortHandler } from "@orpc/server/message-port";
 import { z } from "zod";
 
+import { RoomStateStore } from "../../renderer/src/features/sessions/room-state-store";
 import type { DesktopRpcContext } from "../desktop-rpc-context";
 import { createMediaServer } from "../media-protocol";
 import { loadLocalSessionModuleResources } from "../sessions/local-room-resources";
@@ -74,6 +76,17 @@ test("完全离线：开局前入房、审批、双向聊天与订阅、私有�
   );
   await writeFile(join(module, "角色", "甲.json"), JSON.stringify({ name: "甲" }));
   await writeFile(join(module, "角色", "乙.json"), JSON.stringify({ name: "乙" }));
+  await writeFile(
+    join(module, "maps/营地.json"),
+    JSON.stringify({
+      name: "营地",
+      image: "test.png",
+      width: 100,
+      height: 100,
+      grid: { type: "none", pixelsPerUnit: 1, unit: "米" },
+      starts: [{ id: "入口", name: "入口", at: [50, 50] }],
+    }),
+  );
   const room = await createSession(sessionsRoot, module, "离线联机");
   const chat = new ChatService(sessionsRoot, { run: async () => {} }, async () => {
     throw new Error("测试禁止访问模型网络");
@@ -216,6 +229,42 @@ test("完全离线：开局前入房、审批、双向聊天与订阅、私有�
     assert.equal(first.done, false);
     const notification = first.value as { type: string; delivery: { id: string; seq: number } };
     assert.equal(notification.type, "state");
+    const replica = new RoomStateStore(resources.baseline);
+    replica.apply((first.value as { frame: RoomStateFrame }).frame);
+    const sections = replica.getSnapshot()!.sections;
+    assert.equal(sections.viewerId, guestPlayer.id);
+    const [camp] = sections.map.maps;
+    assert.equal(camp?.id, "营地");
+    assert.deepEqual(
+      new Set(camp.tokens.map((t) => t.playerId)),
+      new Set([hostPlayer.id, guestPlayer.id]),
+    );
+    await chat.setSubmissionMode(room.id, "manual");
+    const hostToken = camp.tokens.find((t) => t.playerId === hostPlayer.id)!;
+    await assert.rejects(
+      client.game.chat.send({
+        roomId: room.id,
+        clientMessageId: randomUUID(),
+        text: "",
+        chatOnly: false,
+        movement: { map: camp.id, token: hostToken.id, waypoints: [[51, 51]] },
+      }),
+      /自己的角色/,
+    );
+    const guestToken = camp.tokens.find((t) => t.playerId === guestPlayer.id)!;
+    const move = await client.game.chat.send({
+      roomId: room.id,
+      clientMessageId: randomUUID(),
+      chatOnly: false,
+      text: "",
+      movement: { map: camp.id, token: guestToken.id, waypoints: [[51, 51]] },
+    });
+    assert.equal(move.kind === "player" && move.movement?.token, guestToken.id);
+    assert.equal(resources.maps[0]?.image, "test.png");
+    const terrain = await fetch(
+      `${media.base}${encodeURIComponent(`room-module:${room.id}`)}?path=maps/营地.json&image=test.png`,
+    );
+    assert.equal(await terrain.text(), "local image");
     await client.game.room.acknowledge({
       roomId: room.id,
       subscriptionId: notification.delivery.id,

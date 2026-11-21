@@ -342,6 +342,11 @@ test("无 AI 预设的离线成员可接力，接回及移除保持正确角色�
     await f.confirm();
     const characterId = (await f.state())!.progress.characterId;
     await f.chat.setMemberRelay(f.room.id, f.player.id, true);
+    const token = async () =>
+      (await f.chat.roomProjection(f.room.id, f.player)).sections.map.maps
+        .flatMap((map) => map.tokens)
+        .find((item) => item.playerId === f.player.id);
+    assert.equal((await token())?.relay, true);
     let settings = await f.chat.companionSettings(f.room.id);
     assert.equal(settings.members.find((member) => member.id === f.player.id)?.relay, true);
     assert.equal(
@@ -356,6 +361,7 @@ test("无 AI 预设的离线成员可接力，接回及移除保持正确角色�
     await f.chat.setMemberRelay(f.room.id, f.player.id, false);
     settings = await f.chat.companionSettings(f.room.id);
     assert.equal(settings.members[0]?.relay, false);
+    assert.equal((await token())?.relay, undefined);
     assert.equal(
       settings.seats.some((seat) => seat.id === f.player.id),
       false,

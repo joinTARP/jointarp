@@ -142,6 +142,12 @@ test("六位码原生房间：审批与权限、模组图片、身份恢复，�
     });
     const resources = await guest.moduleResources(room.id);
     assert.equal(resources.room.id, room.id);
+    const terrain = resources.maps.find((map) => map.id === "测试场景")!;
+    const terrainUrl = `tarp://document/${encodeURIComponent("room-module:" + room.id)}?${new URLSearchParams({ path: terrain.path, image: terrain.image })}`;
+    assert.equal(
+      await (await guest.media(terrainUrl, "GET"))?.text(),
+      await Bun.file(join(fixture.modulePath, terrain.image)).text(),
+    );
     const path = `/media/${encodeURIComponent(`room:${room.id}`)}?path=&image=transport.png`;
     const opened = await Promise.allSettled(
       Array.from({ length: 5 }, () => remote.request!(path, {})),
@@ -214,6 +220,7 @@ test("六位码原生房间：审批与权限、模组图片、身份恢复，�
     );
     const first = await subscription.next();
     assert.equal(first.done, false);
+    assert.equal((await guest.media(terrainUrl, "GET"))?.status, 200);
     coordinator.disconnect();
     const message = await restored.game.chat.send({
       roomId: room.id,

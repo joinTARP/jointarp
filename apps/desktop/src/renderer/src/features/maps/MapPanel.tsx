@@ -120,7 +120,13 @@ export function MapDialog({ roomId }: { roomId: string }) {
   const [warning, setWarning] = useState("");
   const own = model.own;
   useEffect(() => {
-    if (own) mapUi.trackCharacter(roomId, own.token.id, own.map, own.token.at);
+    if (own) {
+      mapUi.trackCharacter(roomId, own.token.id, own.map, own.token.at);
+      if (own.token.relay)
+        mapUi.update(roomId, (state) =>
+          state.plan || state.planning ? { ...state, plan: undefined, planning: false } : state,
+        );
+    }
   }, [roomId, own]);
   const plan = ui.plan?.map === selected?.resource.id ? ui.plan : undefined;
   const planMap = useMemo(
@@ -128,7 +134,7 @@ export function MapDialog({ roomId }: { roomId: string }) {
     [model.maps, plan?.map],
   );
   const summary = plan && planMap ? summarizePlan(planMap, plan) : undefined;
-  const canPlan = Boolean(own && selected && own.map === selected.resource.id);
+  const canPlan = Boolean(own && !own.token.relay && selected && own.map === selected.resource.id);
   const planning = ui.planning && canPlan;
   if (!selected) return null;
   const unit = selected.resource.grid.unit;

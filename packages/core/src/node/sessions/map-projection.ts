@@ -29,6 +29,7 @@ export function projectMapSection(
   maps: readonly ModuleMap[],
   state: MapState,
   party: ReadonlyMap<string, string>,
+  relayed: ReadonlySet<string> = new Set(),
 ): MapSection {
   const views: MapView[] = [];
   for (const map of maps) {
@@ -68,6 +69,7 @@ export function projectMapSection(
             size: token.size,
             party: isParty(token, party),
             ...(playerId ? { playerId } : {}),
+            ...(playerId && relayed.has(playerId) ? { relay: true } : {}),
           };
         }),
     });
