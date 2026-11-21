@@ -25,7 +25,7 @@ export const typesPageId = "types";
 export const preludePageId = "prelude";
 export const startsPageId = "starts";
 export const creationPageId = "creation";
-export type ModuleMetaPage = "types" | "prelude" | "starts" | "creation";
+export type ModuleMetaPage = "types" | "prelude" | "starts" | "creation" | "maps";
 
 export interface ModuleNavItem {
   readonly icon: LucideIcon;

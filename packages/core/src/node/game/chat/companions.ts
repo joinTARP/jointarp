@@ -30,6 +30,7 @@ import {
   saveLaunchProgress,
   saveLaunchRoom,
 } from "../../sessions/launch-db";
+import { seatPartyAtStart } from "../../sessions/map-commands";
 import { readRoomSettings } from "../../sessions/room-settings";
 import type { CompanionSeat } from "../../sessions/room-storage";
 import { roomDirectoryForDatabase } from "../../sessions/session-paths";
@@ -234,6 +235,7 @@ export class ChatCompanions {
         });
         markStateChanged(state.db);
       });
+      if (companion && !before) await seatPartyAtStart(state.db);
     });
   }
 

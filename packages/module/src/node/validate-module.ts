@@ -11,11 +11,20 @@ import { parseDocumentContent } from "./document-codec";
 import { loadDocumentTypes } from "./document-types";
 import { validateInitialGameState } from "./game-state-validation";
 import { loadModuleDocuments } from "./module-documents";
+import { loadModuleMapEntries, validateModuleMapReferences } from "./module-maps";
 import { loadModuleMetadata } from "./module-metadata";
 import { loadModulePages } from "./module-pages";
 
 export interface ModuleValidationIssue {
-  readonly kind: "metadata" | "types" | "document" | "reference" | "page" | "launch" | "empty";
+  readonly kind:
+    | "metadata"
+    | "types"
+    | "document"
+    | "reference"
+    | "page"
+    | "launch"
+    | "map"
+    | "empty";
   readonly path: string;
   readonly message: string;
 }
@@ -27,6 +36,7 @@ export interface ModuleValidationResult {
   readonly documentTypeCount: number;
   readonly documentCount: number;
   readonly pageCount: number;
+  readonly mapCount: number;
   readonly issues: readonly ModuleValidationIssue[];
 }
 
@@ -50,10 +60,27 @@ export async function validateModule(directory: string): Promise<ModuleValidatio
   else add("types", ".types", results[1].reason);
   let documentCount = 0;
   let pageCount = 0;
+  let mapCount = 0;
   if (metadata && types) {
     try {
       const documents = await loadModuleDocuments(path, types);
       documentCount = documents.length;
+      try {
+        const { maps, issues: mapIssues } = await loadModuleMapEntries(path);
+        mapCount = maps.length;
+        const identities = new Set(
+          documents
+            .filter((document) => document.valid)
+            .map((document) => documentIdentity(document.path)),
+        );
+        for (const issue of [
+          ...mapIssues,
+          ...(await validateModuleMapReferences(path, maps, identities)),
+        ])
+          add("map", issue.path, issue.message);
+      } catch (error) {
+        add("map", "maps", error);
+      }
       const byIdentity = new Map(
         documents.map((document) => [documentIdentity(document.path), document]),
       );
@@ -128,6 +155,7 @@ export async function validateModule(directory: string): Promise<ModuleValidatio
     documentTypeCount: types?.length ?? 0,
     documentCount,
     pageCount,
+    mapCount,
     issues,
   };
 }

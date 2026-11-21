@@ -35,6 +35,7 @@ import { readGameDocuments } from "./game-document-source";
 import { forgetGameDocumentViews, readGameDocumentSnapshot } from "./game-document-views";
 import { listGameFileRecords } from "./game-file-index";
 import { layerPath, readOverlayDocument } from "./game-overlay";
+import { readMapStateFile, reconcileMapState, writeMapStateFile } from "./map-state";
 import { copyModule, directoryExists } from "./module-copy";
 import { moduleSyncDirectory, moduleSyncJournal, recoverModuleSync } from "./module-sync-recovery";
 import { readAdventure } from "./room-storage";
@@ -201,6 +202,7 @@ async function validateCandidate(
 ): Promise<{
   module: FrozenModule;
   characters: ReturnType<typeof readAdventure>["party"]["characters"];
+  identities: Set<string>;
 }> {
   const module = await loadFrozenModule(join(candidate, "module"));
   if (!module.types.length || !module.documents.length) throw new Error("模组没有可用于游戏的文档");
@@ -313,7 +315,11 @@ async function validateCandidate(
     initializeCharacters(db);
     await readGameDocumentSnapshot(db, game);
     await projectEntities(db);
-    return { module, characters: readAdventure(candidate).party.characters };
+    return {
+      module,
+      characters: readAdventure(candidate).party.characters,
+      identities: new Set(documents.map((document) => documentIdentity(document.path))),
+    };
   } finally {
     db.close();
     forgetFrozenModule(join(candidate, "module"));
@@ -351,6 +357,11 @@ export async function syncModule(root: string, roomId: string) {
         { flag: "wx", mode: 0o600 },
       );
       const validated = await validateCandidate(candidate, previous);
+      const nextMapState = reconcileMapState(
+        readMapStateFile(directory),
+        validated.module.maps,
+        validated.identities,
+      );
       const metadata = await loadModuleMetadata(join(candidate, "module"));
       // 发布阶段同步执行，房间笔记与设置的同步保存不会插入备份和提交之间。
       const adventure = readAdventure(directory);
@@ -368,6 +379,11 @@ export async function syncModule(root: string, roomId: string) {
         readFileSync(join(directory, "adventure.json")),
         { flag: "wx", mode: 0o600 },
       );
+      writeFileSync(
+        join(transaction, "previous-map-state.json"),
+        readFileSync(join(directory, "map-state.json")),
+        { flag: "wx", mode: 0o600 },
+      );
       if (hadIndex)
         writeFileSync(join(transaction, "previous-document-references.json"), readFileSync(index), {
           flag: "wx",
@@ -377,6 +393,7 @@ export async function syncModule(root: string, roomId: string) {
         flag: "wx",
         mode: 0o600,
       });
+      writeMapStateFile(candidate, nextMapState);
       const journal = moduleSyncJournal(directory);
       writeFileAtomicSync(journal, JSON.stringify({ phase: "prepared", hadIndex }), {
         mode: 0o600,
@@ -385,6 +402,7 @@ export async function syncModule(root: string, roomId: string) {
         renameSync(join(directory, "module"), join(transaction, "previous-module"));
         renameSync(join(candidate, "module"), join(directory, "module"));
         renameSync(join(candidate, "next-adventure.json"), join(directory, "adventure.json"));
+        renameSync(join(candidate, "map-state.json"), join(directory, "map-state.json"));
         renameSync(join(candidate, "document-references.json"), index);
         writeFileAtomicSync(journal, JSON.stringify({ phase: "committed", hadIndex }), {
           mode: 0o600,

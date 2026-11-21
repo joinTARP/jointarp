@@ -2,7 +2,7 @@ import { typeFormatLabel } from "@jointarp/module/document-path";
 import { searchItems } from "@shared/query";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
-import { BookOpenText, FileCode2, FileText, TriangleAlert } from "lucide-react";
+import { BookOpenText, FileCode2, FileText, MapIcon, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { PageToolbarHeader } from "../../components/StickyPageToolbar";
@@ -12,6 +12,7 @@ import { DocumentLibraryScope } from "./document-library-context";
 import { DocumentReferences } from "./DocumentReferences";
 import { DocumentTypesPage } from "./DocumentTypesPage";
 import { LaunchOverviewPage } from "./LaunchOverviewPage";
+import { MapInspector } from "./MapInspector";
 import { ModuleDocuments } from "./ModuleDocuments";
 import {
   creationPageIcon,
@@ -82,6 +83,7 @@ export function ModulePage() {
       : documentItems;
     const metaItems: ModuleNavItem[] = [
       typesItem,
+      { id: "maps", label: "地图校对", icon: MapIcon, page: "maps" },
       { id: preludePageId, label: "开场文案", icon: preludePageIcon, page: "prelude" },
       { id: startsPageId, label: "开局方案", icon: startsPageIcon, page: "starts" },
       { id: creationPageId, label: "角色创建", icon: creationPageIcon, page: "creation" },
@@ -169,6 +171,9 @@ export function ModulePage() {
                   </div>
                 </div>
               </>
+            ) : null}
+            {opened?.status === "success" && page === "maps" && !reading ? (
+              <MapInspector key={path} path={path} />
             ) : null}
             {opened?.status === "success" && onTypesPage ? (
               <DocumentTypesPage

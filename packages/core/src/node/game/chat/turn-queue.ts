@@ -4,6 +4,7 @@ import { chatText } from "../../../shared/agent-message";
 import { messageSchema } from "../../../shared/game";
 import type { ChatMessage, SubmissionMode, SubmissionModeSnapshot } from "../../../shared/game";
 import { readCharacters } from "../../sessions/character-db";
+import { movementPrompt } from "../../sessions/map-description";
 import { readRoomSettings, updateRoomSettings } from "../../sessions/room-settings";
 import { roomDirectoryForDatabase } from "../../sessions/session-paths";
 import { chatField } from "../../storage/session-database";
@@ -60,6 +61,9 @@ export class ChatTurnQueue {
             playerId: message.senderId,
             characterName: names.get(message.senderId),
             text: chatText(message),
+            ...(message.movement
+              ? { movement: movementPrompt(state.db, message.id, message.movement) }
+              : {}),
           },
         ];
       if (message.kind === "assistant" && message.companionId && message.pendingAction)

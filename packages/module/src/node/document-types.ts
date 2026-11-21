@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type { DocumentField, DocumentType } from "../schema/document-type";
 import { validateDocumentLayout, validateDocumentType } from "../schema/document-type";
+import { mapDirectory } from "../schema/map";
 import { parseConfig } from "./config-file";
 import { loadLayoutTemplates } from "./layout-templates";
 
@@ -58,6 +59,8 @@ export async function loadDocumentTypes(libraryPath: string): Promise<readonly D
     );
   }
 
+  const reserved = files.find((entry) => entry.name.startsWith(`${mapDirectory}.fields.`));
+  if (reserved) throw new Error(`.types/${reserved.name}：${mapDirectory} 目录保留给地图配置`);
   const seen = new Set<string>();
   for (const entry of [...files, ...layoutFiles]) {
     const stem = entry.name.replace(/\.(json|toml)$/, "");
