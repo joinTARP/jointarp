@@ -136,6 +136,9 @@ export class ChatSync {
               frozenModule(state.db).maps,
               readMapState(state.db),
               partyIndex(state.db),
+              new Set(
+                selection.party.members.filter((member) => member.relay).map((member) => member.id),
+              ),
             ),
           };
         return {
