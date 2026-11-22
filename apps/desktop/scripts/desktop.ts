@@ -2,6 +2,8 @@ import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 
+import { datachannelPackage } from "./datachannel-package";
+
 const root = resolve(import.meta.dirname, "..");
 const mode = process.argv[2] ?? "build";
 if (!["dev", "build", "package", "dist"].includes(mode)) throw new Error(`未知桌面命令：${mode}`);
@@ -48,17 +50,12 @@ async function copyDependency(name: string, from: string) {
   });
   if (name === "node-datachannel") {
     const nativeRequire = createRequire(join(directory, "package.json"));
-    const candidates = Object.keys(manifest.optionalDependencies ?? {}).filter((dependency) => {
-      try {
-        nativeRequire.resolve(dependency);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-    if (candidates.length !== 1)
-      throw new Error("需要且只能安装当前平台的 node-datachannel 原生包");
-    await copyDependency(candidates[0]!, directory);
+    const libc =
+      process.platform === "linux" ? nativeRequire("detect-libc").familySync() : undefined;
+    const target = datachannelPackage(process.platform, process.arch, libc);
+    if (!Object.hasOwn(manifest.optionalDependencies, target))
+      throw new Error(`node-datachannel 不支持当前平台：${target}`);
+    await copyDependency(target, directory);
   }
   for (const dependency of Object.keys(manifest.dependencies ?? {})) {
     await copyDependency(dependency, directory);
